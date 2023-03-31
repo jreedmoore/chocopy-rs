@@ -93,26 +93,32 @@ struct Span {
     token: Token,
     end: Location,
 }
-struct Lexer<'a> {
-    chars: Peekable<Chars<'a>>,
-    start: Location,
-    current: Location,
-}
+
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum LexError {
     UnexpectedCharacter(char),
     UnexpectedEof(&'static str),
     OversizedInteger,
+    TabError,
 }
 
 // https://craftinginterpreters.com/scanning.html
+struct Lexer<'a> {
+    chars: Peekable<Chars<'a>>,
+    start: Location,
+    current: Location,
+    line_start: bool,
+    indent_stack: Vec<usize>,
+}
 impl<'a> Lexer<'a> {
     fn new(input: &'a str) -> Lexer<'a> {
         Lexer {
             chars: input.chars().peekable(),
             start: Location::default(),
             current: Location::default(),
+            line_start: true,
+            indent_stack: vec![0]
         }
     }
 
@@ -146,7 +152,25 @@ impl<'a> Lexer<'a> {
     pub(crate) fn scan(&mut self) -> Result<Span, LexError> {
         loop {
             if let Some(c) = self.advance() {
+                if !c.is_whitespace() && self.line_start {
+                    self.line_start = false;
+                }
                 match c {
+                    w if w.is_whitespace() && self.line_start => {
+                        let indent = self.scan_indent(w)?;
+                        if *self.indent_stack.last().expect("never empty") < indent {
+                            self.indent_stack.push(indent);
+                            return self.span(Token::Indent);
+                        } else if let Some(idx) = self.indent_stack.iter().position(|l| *l == indent) {
+                            self.indent_stack.truncate(idx);
+                            return self.span(Token::Dedent);
+                        } else {
+                            return self.report_error(LexError::TabError)
+                        }
+                    },
+                    '\n' if !self.line_start => self.line_start = false,
+                    w if w.is_whitespace() && !self.line_start => continue,
+
                     '(' => return self.span(Token::OpenParen),
                     ')' => return self.span(Token::CloseParen),
                     '[' => return self.span(Token::OpenBracket),
@@ -343,6 +367,30 @@ impl<'a> Lexer<'a> {
     fn report_error(&mut self, e: LexError) -> Result<Span, LexError> {
         self.start = self.current;
         Err(e)
+    }
+
+    fn scan_indent(&mut self, w: char) -> Result<usize, LexError> {
+        let mut level = 0;
+        match w {
+            '\t' => level += 8,
+            ' ' => level += 1,
+            _ => return Err(LexError::UnexpectedCharacter(w))
+        }
+
+        loop {
+            if let Some(c) = self.peek() {
+                match w {
+                    '\t' => level += 8 - (level % 8),
+                    ' ' => level += 1,
+                    _ => break,
+                }
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        Ok(level)
     }
 }
 
