@@ -1,7 +1,7 @@
-use std::{iter::Peekable, str::Chars};
+use std::{iter::Peekable, str::Chars, fmt::Display};
 
 #[derive(Debug, Clone, PartialEq)]
-enum Token {
+pub enum Token {
     Newline,
     Indent,
     Dedent, // refer to Python 3 documentation
@@ -96,7 +96,7 @@ struct Span {
 
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum LexError {
+pub enum LexError {
     UnexpectedCharacter(char),
     UnexpectedEof(&'static str),
     OversizedInteger,
@@ -229,6 +229,8 @@ impl<'a> Lexer<'a> {
                             if *c != '\n' {
                                 // this probably needs some clever thinking to deal with windows style EOL etc.
                                 self.advance();
+                            } else {
+                                break;
                             }
                         } else {
                             break;
@@ -407,6 +409,47 @@ impl<'a> Iterator for Lexer<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct LexErrors {
+    errors: Vec<LexError>
+}
+impl Display for LexErrors {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for error in &self.errors {
+            write!(f, "{:?}", error)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for LexErrors {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.source()
+    }
+}
+
+pub fn lex(input: &str) -> Result<Vec<Token>, LexErrors> {
+    let lexer = Lexer::new(input);
+    let mut tokens = vec![];
+    let mut errors = vec![];
+    for result in lexer {
+        match result {
+            Ok(span) => tokens.push(span.token),
+            Err(e) => errors.push(e),
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(tokens)
+    } else {
+        Err(LexErrors { errors })
+    }
+} 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -456,6 +499,7 @@ mod tests {
         );
         assert_lex_eq("()", vec![Token::OpenParen, Token::CloseParen]);
         assert_lex_eq("# blah blah", vec![]);
+        assert_lex_eq("# blah blah\n", vec![]);
         assert_lex_eq(
             r#""hello world""#,
             vec![Token::String("hello world".to_string())],
