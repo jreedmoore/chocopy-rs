@@ -1,4 +1,4 @@
-use std::{fs, error::Error};
+use std::{error::Error, fs};
 
 use parser::lexer;
 
@@ -8,7 +8,7 @@ fn test_lexer_on_examples() -> Result<(), Box<dyn Error>> {
         let entry = entry?;
         let path = entry.path();
 
-        let bytes = fs::read(path)?; 
+        let bytes = fs::read(path)?;
         let input = std::str::from_utf8(&bytes)?;
 
         assert!(lexer::lex(input).is_ok());

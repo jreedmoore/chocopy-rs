@@ -1,4 +1,4 @@
-use std::{iter::Peekable, str::Chars, fmt::Display};
+use std::{fmt::Display, iter::Peekable, str::Chars};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -72,9 +72,17 @@ pub enum Token {
     /// end of file
     Eof,
 }
+impl Token {
+    pub fn is_identifier(&self) -> bool {
+        match self {
+            Token::Identifier(_) => true,
+            _ => false,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Location {
+pub struct Location {
     offset: usize,
 }
 impl Location {
@@ -88,12 +96,11 @@ impl Location {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Span {
-    start: Location,
-    token: Token,
-    end: Location,
+pub struct Span {
+    pub start: Location,
+    pub token: Token,
+    pub end: Location,
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LexError {
@@ -104,7 +111,7 @@ pub enum LexError {
 }
 
 // https://craftinginterpreters.com/scanning.html
-struct Lexer<'a> {
+pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
     start: Location,
     current: Location,
@@ -112,13 +119,13 @@ struct Lexer<'a> {
     indent_stack: Vec<usize>,
 }
 impl<'a> Lexer<'a> {
-    fn new(input: &'a str) -> Lexer<'a> {
+    pub fn new(input: &'a str) -> Lexer<'a> {
         Lexer {
             chars: input.chars().peekable(),
             start: Location::default(),
             current: Location::default(),
             line_start: true,
-            indent_stack: vec![0]
+            indent_stack: vec![0],
         }
     }
 
@@ -161,13 +168,15 @@ impl<'a> Lexer<'a> {
                         if *self.indent_stack.last().expect("never empty") < indent {
                             self.indent_stack.push(indent);
                             return self.span(Token::Indent);
-                        } else if let Some(idx) = self.indent_stack.iter().position(|l| *l == indent) {
+                        } else if let Some(idx) =
+                            self.indent_stack.iter().position(|l| *l == indent)
+                        {
                             self.indent_stack.truncate(idx);
                             return self.span(Token::Dedent);
                         } else {
-                            return self.report_error(LexError::TabError)
+                            return self.report_error(LexError::TabError);
                         }
-                    },
+                    }
                     '\n' if !self.line_start => self.line_start = false,
                     w if w.is_whitespace() && !self.line_start => continue,
 
@@ -376,12 +385,12 @@ impl<'a> Lexer<'a> {
         match w {
             '\t' => level += 8,
             ' ' => level += 1,
-            _ => return Err(LexError::UnexpectedCharacter(w))
+            _ => return Err(LexError::UnexpectedCharacter(w)),
         }
 
         loop {
             if let Some(c) = self.peek() {
-                match w {
+                match c {
                     '\t' => level += 8 - (level % 8),
                     ' ' => level += 1,
                     _ => break,
@@ -411,7 +420,7 @@ impl<'a> Iterator for Lexer<'a> {
 
 #[derive(Debug)]
 pub struct LexErrors {
-    errors: Vec<LexError>
+    errors: Vec<LexError>,
 }
 impl Display for LexErrors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -448,7 +457,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexErrors> {
     } else {
         Err(LexErrors { errors })
     }
-} 
+}
 
 #[cfg(test)]
 mod tests {
