@@ -60,7 +60,7 @@ pub enum Statement {
     },
     If {
         main: ConditionalBlock,
-        elif: Vec<ConditionalBlock>,
+        elifs: Vec<ConditionalBlock>,
         otherwise: Option<Vec<Statement>>,
     },
     While(ConditionalBlock),

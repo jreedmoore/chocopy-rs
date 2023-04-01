@@ -8,6 +8,7 @@ pub enum Token {
     Identifier(String),
 
     String(String),
+    IdString(String),
     Integer(i32),
 
     // operators
@@ -518,6 +519,16 @@ mod tests {
             vec![Token::String("hello \"world".to_string())],
         );
         assert_lex_eq("1234", vec![Token::Integer(1234)]);
+        assert_lex_eq(
+            "[1, 2]",
+            vec![
+                Token::OpenBracket,
+                Token::Integer(1),
+                Token::Comma,
+                Token::Integer(2),
+                Token::CloseBracket,
+            ],
+        );
         assert_lex_eq(
             "a = 1",
             vec![

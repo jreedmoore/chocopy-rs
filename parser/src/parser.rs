@@ -4,8 +4,10 @@
 use std::collections::VecDeque;
 
 // https://chocopy.org/chocopy_language_reference.pdf
-use crate::ast::{self};
+use crate::ast;
 use crate::lexer::{self, Lexer, Span, Token};
+
+/// Recursive descent parser with 2 lookahead tokens
 struct Parser<'a> {
     lexer: Lexer<'a>,
     eof: bool,
@@ -26,7 +28,12 @@ impl<'a> Parser<'a> {
 
     /// Main entry point
     pub fn parse(&mut self) -> Result<ast::Program, ParseError> {
-        Ok(self.program())
+        let prog = self.program();
+        if self.errors.is_empty() {
+            Ok(prog)
+        } else {
+            Err(self.errors.pop().expect("not empty"))
+        }
     }
 
     fn error(&mut self, error: ParseError) {
@@ -62,10 +69,12 @@ impl<'a> Parser<'a> {
     fn advance(&mut self) -> Option<Token> {
         if let Some(span) = self.peek.pop_front() {
             self.current = Some(span.clone());
+            println!("Advance from peek {:?}", span.token);
             Some(span.token)
         } else {
             if let Some(span) = self.get_next() {
                 self.current = Some(span.clone());
+                println!("Advance from lexer {:?}", span.token);
                 Some(span.token)
             } else {
                 None
@@ -82,6 +91,18 @@ impl<'a> Parser<'a> {
             }
         }
         true
+    }
+
+    fn peek_n(&mut self, idx: usize) -> Option<&Token> {
+        if self.fill_peek(idx + 1) {
+            Some(&self.peek[idx].token)
+        } else {
+            None
+        }
+    }
+
+    fn peek(&mut self) -> Option<&Token> {
+        self.peek_n(0)
     }
 
     fn check(&mut self, expected: Token) -> bool {
@@ -146,10 +167,6 @@ impl<'a> Parser<'a> {
             }
         }
         ast::Program { defs, stmts }
-    }
-
-    fn statement(&mut self) -> Option<ast::Statement> {
-        todo!()
     }
 
     fn class_def(&mut self) -> Option<ast::ClassDef> {
@@ -263,6 +280,79 @@ impl<'a> Parser<'a> {
         Some(ast::VariableDef { var, literal })
     }
 
+    fn statement(&mut self) -> Option<ast::Statement> {
+        match self.peek()? {
+            Token::Pass => {
+                self.advance()?;
+                self.consume(Token::Newline)?;
+                Some(ast::Statement::Pass)
+            }
+            Token::Return => {
+                self.advance()?;
+                if self.check(Token::Newline) {
+                    Some(ast::Statement::Return(None))
+                } else {
+                    Some(ast::Statement::Return(Some(self.expression()?)))
+                }
+            }
+            Token::If => {
+                self.advance()?;
+                let main = self.cond_block()?;
+                let mut elifs = vec![];
+                while self.check(Token::Elif) {
+                    self.advance()?;
+                    elifs.push(self.cond_block()?);
+                }
+                let mut otherwise = None;
+                if self.check(Token::Else) {
+                    self.advance()?;
+                    otherwise = Some(self.block()?);
+                }
+                Some(ast::Statement::If {
+                    main,
+                    elifs,
+                    otherwise,
+                })
+            }
+            Token::While => {
+                self.advance()?;
+                Some(ast::Statement::While(self.cond_block()?))
+            }
+            Token::For => {
+                self.advance()?;
+                let id = self.identifier()?;
+                self.consume(Token::In)?;
+                let in_expr = self.expression()?;
+                self.consume(Token::Colon);
+                let block = self.block()?;
+                Some(ast::Statement::For { id, in_expr, block })
+            }
+            t => Some(ast::Statement::Expr(self.expression()?)),
+        }
+    }
+
+    fn cond_block(&mut self) -> Option<ast::ConditionalBlock> {
+        let condition = self.expression()?;
+        self.consume(Token::Colon);
+        let then = self.block()?;
+        Some(ast::ConditionalBlock { condition, then })
+    }
+    fn block(&mut self) -> Option<Vec<ast::Statement>> {
+        self.consume(Token::Newline)?;
+        self.consume(Token::Indent)?;
+        let mut stmts = vec![];
+        while !self.check(Token::Dedent) {
+            stmts.push(self.statement()?)
+        }
+        self.consume(Token::Dedent)?;
+        if stmts.is_empty() {
+            self.error(ParseError::EmptyBlock);
+            None
+        } else {
+            Some(stmts)
+        }
+    }
+
     fn is_identifier(&mut self) -> bool {
         self.check_p(|t| t.is_identifier())
     }
@@ -281,28 +371,121 @@ impl<'a> Parser<'a> {
     }
 
     fn typed_var(&mut self) -> Option<ast::TypedVar> {
-        todo!()
+        let id = self.identifier()?;
+        self.consume(Token::Colon)?;
+        let type_name = self.type_rule()?;
+        Some(ast::TypedVar { id, typ: type_name })
     }
 
     // renaming of production rule type to avoid reserved keyword
     fn type_rule(&mut self) -> Option<ast::Type> {
-        todo!()
+        let r = match self.peek()? {
+            Token::Identifier(name) => Some(ast::Type::Id(ast::Identifier {
+                name: name.to_string(),
+            })),
+            Token::IdString(name) => Some(ast::Type::Id(ast::Identifier {
+                name: name.to_string(),
+            })),
+            Token::OpenBracket => Some(ast::Type::List(Box::new(self.type_rule()?))),
+            _ => return None,
+        };
+        self.advance();
+        r
     }
 
     fn literal(&mut self) -> Option<ast::Literal> {
+        match self.advance()? {
+            Token::None => Some(ast::Literal::None),
+            Token::True => Some(ast::Literal::True),
+            Token::False => Some(ast::Literal::False),
+            Token::Integer(i) => Some(ast::Literal::Integer(i)),
+            Token::String(s) => Some(ast::Literal::Str(s.clone())),
+            Token::IdString(s) => Some(ast::Literal::IdStr(ast::Identifier { name: s.clone() })),
+            _ => None,
+        }
+    }
+
+    fn expression(&mut self) -> Option<ast::Expression> {
+        self.expression_bp(0)
+    }
+
+    // main idea is that we parse a prefix, peek to decide if we're parsing a bin/3-op
+    // use binding power to determine when to stop (on rhs)
+    fn expression_bp(&mut self, binding_power: usize) -> Option<ast::Expression> {
+        let prefix = {
+            // I can't figure out function pointers to a struct with lifetimes
+            // so I'm just jamming the equivalent of the table directly here.
+            match self.peek()? {
+                Token::None
+                | Token::True
+                | Token::False
+                | Token::Integer(_)
+                | Token::String(_)
+                | Token::IdString(_) => {
+                    return Some(ast::Expression::C(ast::CExpression::Lit(self.literal()?)))
+                }
+                Token::Identifier(_) => self.id_expression(),
+                Token::OpenParen => {
+                    self.advance();
+                    let e = self.expression_bp(0);
+                    self.consume(Token::CloseParen);
+                    // TODO: is this correct?
+                    return e;
+                }
+                Token::Not => {
+                    self.advance();
+                    return Some(ast::Expression::Not(Box::new(self.expression_bp(0)?)));
+                }
+                /*
+                TODO: CExpression mess
+                Probably should split into two different functions
+                Token::Minus => {
+                    self.advance();
+                    return Some(ast::Expression::C(ast::CExpression::Negate(Box::new(
+                        self.expression_bp(0)?,
+                    ))));
+                }
+                */
+                Token::OpenBracket => {
+                    self.advance();
+                    let mut es = vec![];
+                    loop {
+                        es.push(self.expression_bp(0)?);
+                        //println!("Expr OpenBracket expect Comma, got {:?}", self.peek());
+                        if self.check(Token::Comma) {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    self.consume(Token::CloseBracket)?;
+                    return Some(ast::Expression::C(ast::CExpression::ListLiteral(es)));
+                }
+                _ => todo!(),
+            }
+        };
         todo!()
+    }
+
+    fn id_expression(&mut self) -> Option<ast::Expression> {
+        let id = self.identifier()?;
+        Some(ast::Expression::C(ast::CExpression::Id(id)))
     }
 }
 
-enum FunOrVar {
-    Fun(ast::FunctionDef),
-    Var(ast::VariableDef),
+type PF = fn(&mut Parser) -> Option<ast::Expression>;
+struct ParseRule {
+    prefix: Option<PF>,
+    infix: Option<PF>,
+    binding_power: Option<usize>,
 }
 
+#[derive(Debug)]
 pub enum ParseError {
     LexError(lexer::LexError),
     UnexpectedEof,
     UnexpectedToken(Token),
+    EmptyBlock,
 }
 
 #[cfg(test)]
@@ -310,8 +493,30 @@ mod tests {
     use super::Parser;
     use crate::lexer::Lexer;
 
+    fn assert_parses(input: &str) {
+        let r = Parser::new(Lexer::new(input)).parse();
+        match r {
+            Err(e) => panic!("Failure in example {}: {:?}", input, e),
+            Ok(_) => (),
+        }
+    }
+
+    fn assert_fails(input: &str) {
+        let r = Parser::new(Lexer::new(input)).parse();
+        assert!(r.is_err(), "Expected failure for {}", input);
+    }
+
     #[test]
     fn test_parser() {
-        assert!(Parser::new(Lexer::new("")).parse().is_ok())
+        //assert_parses("");
+        //assert_parses("1");
+        //assert_parses("1234");
+        //assert_parses("True");
+        //assert_parses("False");
+        //assert_parses("None");
+        assert_parses("[1, None]");
+        //assert_parses("(1)");
+        //assert_fails("((1)");
+        //assert_fails("(1))");
     }
 }
