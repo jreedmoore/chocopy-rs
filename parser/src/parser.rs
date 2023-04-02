@@ -14,6 +14,7 @@ struct Parser<'a> {
     current: Option<Span>,
     errors: Vec<ParseError>,
     peek: VecDeque<Span>,
+    exprs: VecDeque<ast::Expression>
 }
 impl<'a> Parser<'a> {
     pub fn new(lexer: Lexer<'a>) -> Parser<'a> {
@@ -23,6 +24,7 @@ impl<'a> Parser<'a> {
             peek: VecDeque::new(),
             current: None,
             errors: vec![],
+            exprs: VecDeque::new(),
         }
     }
 
@@ -69,14 +71,13 @@ impl<'a> Parser<'a> {
     fn advance(&mut self) -> Option<Token> {
         if let Some(span) = self.peek.pop_front() {
             self.current = Some(span.clone());
-            println!("Advance from peek {:?}", span.token);
             Some(span.token)
         } else {
             if let Some(span) = self.get_next() {
                 self.current = Some(span.clone());
-                println!("Advance from lexer {:?}", span.token);
                 Some(span.token)
             } else {
+                self.error(ParseError::UnexpectedEof);
                 None
             }
         }
@@ -411,7 +412,57 @@ impl<'a> Parser<'a> {
 
     // main idea is that we parse a prefix, peek to decide if we're parsing a bin/3-op
     // use binding power to determine when to stop (on rhs)
-    fn expression_bp(&mut self, binding_power: usize) -> Option<ast::Expression> {
+    fn expression_bp(&mut self, min_bp: usize) -> Option<ast::Expression> {
+        let prefix = {
+            match self.peek()? {
+                Token::Not => {
+                    self.advance()?;
+                    ast::Expression::Not(Box::new(self.expression_bp(7)?))
+                }
+                _ => self.cexpression()?
+            }
+        };
+        self.exprs.push_back(prefix);
+
+        let rule = self.peek().map(Parser::parse_table);
+        if let Some(rule) = rule {
+            if rule.infix.is_none() || rule.power.left_bp() < min_bp {
+                return self.exprs.pop_front();
+            }
+
+            return rule.infix.unwrap()(self, rule.power.right_bp());
+        } else {
+            return self.exprs.pop_front();
+        }
+    }
+
+    fn logical_binary(&mut self, min_bp: usize) -> Option<ast::Expression> {
+        let bin_op = match self.advance()? {
+            Token::And => ast::LogicalBinOp::And,
+            Token::Or => ast::LogicalBinOp::Or,
+            t => {
+                self.error(ParseError::UnexpectedToken(t));
+                return None
+            }
+        };
+
+        let rhs = self.expression_bp(min_bp)?;
+        Some(ast::Expression::LogicalBinaryOp(bin_op, Box::new(self.exprs.pop_front().unwrap()), Box::new(rhs)))
+    }
+
+    fn parse_table<'b>(token: &Token) -> ParseRule<'a, 'b> {
+        match token {
+            Token::Or => ParseRule::infix(Parser::logical_binary, 1, 2),
+            Token::And => ParseRule::infix(Parser::logical_binary, 3, 4),
+            _ => todo!()
+        }
+    }
+
+    fn cexpression(&mut self) -> Option<ast::Expression> {
+        self.cexpression_bp(0)
+    }
+
+    fn cexpression_bp(&mut self, min_bp: usize) -> Option<ast::Expression> {
         let prefix = {
             // I can't figure out function pointers to a struct with lifetimes
             // so I'm just jamming the equivalent of the table directly here.
@@ -422,9 +473,8 @@ impl<'a> Parser<'a> {
                 | Token::Integer(_)
                 | Token::String(_)
                 | Token::IdString(_) => {
-                    return Some(ast::Expression::C(ast::CExpression::Lit(self.literal()?)))
+                    return Some(ast::Expression::Lit(self.literal()?))
                 }
-                Token::Identifier(_) => self.id_expression(),
                 Token::OpenParen => {
                     self.advance();
                     let e = self.expression_bp(0);
@@ -432,20 +482,12 @@ impl<'a> Parser<'a> {
                     // TODO: is this correct?
                     return e;
                 }
-                Token::Not => {
-                    self.advance();
-                    return Some(ast::Expression::Not(Box::new(self.expression_bp(0)?)));
-                }
-                /*
-                TODO: CExpression mess
-                Probably should split into two different functions
                 Token::Minus => {
                     self.advance();
-                    return Some(ast::Expression::C(ast::CExpression::Negate(Box::new(
-                        self.expression_bp(0)?,
-                    ))));
+                    return Some(ast::Expression::UnaryMinus(Box::new(
+                        self.cexpression_bp(0)?,
+                    )));
                 }
-                */
                 Token::OpenBracket => {
                     self.advance();
                     let mut es = vec![];
@@ -459,9 +501,13 @@ impl<'a> Parser<'a> {
                         }
                     }
                     self.consume(Token::CloseBracket)?;
-                    return Some(ast::Expression::C(ast::CExpression::ListLiteral(es)));
+                    return Some(ast::Expression::ListLiteral(es));
                 }
-                _ => todo!(),
+                t => {
+                    let t = t.clone();
+                    self.error(ParseError::UnexpectedToken(t));
+                    return None;
+                }
             }
         };
         todo!()
@@ -469,15 +515,51 @@ impl<'a> Parser<'a> {
 
     fn id_expression(&mut self) -> Option<ast::Expression> {
         let id = self.identifier()?;
-        Some(ast::Expression::C(ast::CExpression::Id(id)))
+        Some(ast::Expression::Id(id))
     }
 }
 
-type PF = fn(&mut Parser) -> Option<ast::Expression>;
-struct ParseRule {
-    prefix: Option<PF>,
-    infix: Option<PF>,
-    binding_power: Option<usize>,
+type PF<'a,'b> = fn(&'b mut Parser<'a>, usize) -> Option<ast::Expression>;
+struct ParseRule<'a,'b> {
+    prefix: Option<PF<'a, 'b>>,
+    infix: Option<PF<'a,'b>>,
+    power: BindingPower
+}
+impl<'a, 'b> ParseRule<'a, 'b> {
+    fn prefix(f: PF<'a,'b>, bp: usize) -> ParseRule<'a,'b> {
+        ParseRule { prefix: Some(f), infix: None, power: BindingPower::Prefix(bp) }
+    }
+
+    fn infix(f: PF<'a,'b>, lbp: usize, rbp: usize) -> ParseRule<'a,'b> {
+        ParseRule { prefix: None, infix: Some(f), power: BindingPower::Infix(lbp, rbp) }
+    }
+
+    fn postfix(f: PF<'a,'b>, bp: usize) -> ParseRule<'a,'b> {
+        ParseRule { prefix: Some(f), infix: None, power: BindingPower::Postfix(bp) }
+    }
+}
+
+enum BindingPower {
+    Prefix(usize),
+    Infix(usize, usize),
+    Postfix(usize),
+}
+impl BindingPower {
+    fn left_bp(&self) -> usize {
+        match self {
+            BindingPower::Prefix(bp) => *bp,
+            BindingPower::Infix(bp, _) => *bp,
+            BindingPower::Postfix(_) => usize::MAX,
+        }
+    }
+
+    fn right_bp(&self) -> usize {
+        match self {
+            BindingPower::Prefix(bp) => usize::MAX,
+            BindingPower::Infix(_, bp) => *bp,
+            BindingPower::Postfix(bp) => *bp,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -494,29 +576,39 @@ mod tests {
     use crate::lexer::Lexer;
 
     fn assert_parses(input: &str) {
+        println!("Parses: {}", input);
         let r = Parser::new(Lexer::new(input)).parse();
         match r {
             Err(e) => panic!("Failure in example {}: {:?}", input, e),
-            Ok(_) => (),
+            Ok(p) if p.defs.is_empty() && p.stmts.is_empty() => panic!("Empty parse in example {}", input),
+            Ok(a) => println!("{:?}", a),
         }
     }
 
     fn assert_fails(input: &str) {
+        println!("Fails: {}", input);
         let r = Parser::new(Lexer::new(input)).parse();
         assert!(r.is_err(), "Expected failure for {}", input);
     }
 
     #[test]
+    fn test_one() {
+        assert_parses("True or False and False")
+    }
+
+    #[test]
     fn test_parser() {
-        //assert_parses("");
-        //assert_parses("1");
-        //assert_parses("1234");
-        //assert_parses("True");
-        //assert_parses("False");
-        //assert_parses("None");
+        assert_parses("1");
+        assert_parses("1234");
+        assert_parses("True");
+        assert_parses("False");
+        assert_parses("None");
         assert_parses("[1, None]");
-        //assert_parses("(1)");
-        //assert_fails("((1)");
+        assert_parses("(1)");
+        assert_fails("((1)");
+        // hangs
         //assert_fails("(1))");
+        assert_fails("True == not False");
+        //assert_parses("True == (not False)");
     }
 }

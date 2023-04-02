@@ -1,20 +1,24 @@
+#[derive(Debug)]
 pub struct Program {
     pub defs: Vec<Definition>,
     pub stmts: Vec<Statement>,
 }
 
+#[derive(Debug)]
 pub enum Definition {
     Var(VariableDef),
     Func(FunctionDef),
     Class(ClassDef),
 }
 
+#[derive(Debug)]
 pub struct ClassDef {
     pub id: Identifier,
     pub parent: Identifier,
     pub vars: Vec<VariableDef>,
     pub funcs: Vec<FunctionDef>,
 }
+#[derive(Debug)]
 pub struct FunctionDef {
     pub id: Identifier,
     pub params: Vec<TypedVar>,
@@ -25,31 +29,38 @@ pub struct FunctionDef {
     pub stmts: Vec<Statement>,
 }
 
+#[derive(Debug)]
 pub enum Declaration {
     NonLocal(Identifier),
     Global(Identifier),
 }
+#[derive(Debug)]
 pub struct TypedVar {
     pub id: Identifier,
     pub typ: Type,
 }
+#[derive(Debug)]
 pub enum Type {
     Id(Identifier),
     List(Box<Type>),
 }
+#[derive(Debug)]
 pub struct VariableDef {
     pub var: TypedVar,
     pub literal: Literal,
 }
 
+#[derive(Debug)]
 pub struct Identifier {
     pub name: String,
 }
 
+#[derive(Debug)]
 pub struct ConditionalBlock {
     pub condition: Expression,
     pub then: Vec<Statement>,
 }
+#[derive(Debug)]
 pub enum Statement {
     Pass,
     Expr(Expression),
@@ -71,6 +82,7 @@ pub enum Statement {
     },
 }
 
+#[derive(Debug)]
 pub enum Literal {
     None,
     True,
@@ -80,26 +92,19 @@ pub enum Literal {
     IdStr(Identifier),
 }
 
+#[derive(Debug)]
 pub enum Expression {
-    C(CExpression),
     Not(Box<Expression>),
-    And(Box<Expression>, Box<Expression>),
-    Or(Box<Expression>, Box<Expression>),
+    LogicalBinaryOp(LogicalBinOp, Box<Expression>, Box<Expression>),
     Ternary {
         e: Box<Expression>,
         if_expr: Box<Expression>,
         else_expr: Box<Expression>,
     },
-}
-pub struct MemberExpression {
-    pub expr: Box<CExpression>,
-    pub id: Identifier,
-}
-pub struct IndexExpression {
-    pub expr: Box<CExpression>,
-    pub index: Box<Expression>,
-}
-pub enum CExpression {
+
+    // cexpression
+    // feels little bit bad that we're throwing away structural guarantees from the grammar
+    // but it's kind of annoying to deal with the CExpression breakdown
     Id(Identifier),
     Lit(Literal),
     ListLiteral(Vec<Expression>),
@@ -107,10 +112,26 @@ pub enum CExpression {
     Index(IndexExpression),
     MemberCall(MemberExpression, Option<Vec<Expression>>),
     Call(Identifier, Option<Vec<Expression>>),
-    BinaryOp(BinOp, Box<CExpression>, Box<CExpression>),
-    Negate(Box<CExpression>),
+    BinaryOp(BinOp, Box<Expression>, Box<Expression>),
+    UnaryMinus(Box<Expression>),
 }
 
+#[derive(Debug)]
+pub enum LogicalBinOp {
+    And, Or
+}
+#[derive(Debug)]
+pub struct MemberExpression {
+    pub expr: Box<Expression>,
+    pub id: Identifier,
+}
+#[derive(Debug)]
+pub struct IndexExpression {
+    pub expr: Box<Expression>,
+    pub index: Box<Expression>,
+}
+
+#[derive(Debug)]
 pub enum BinOp {
     Plus,
     Minus,
@@ -126,6 +147,7 @@ pub enum BinOp {
     Is,
 }
 
+#[derive(Debug)]
 pub enum Target {
     Id(Identifier),
     Member(MemberExpression),

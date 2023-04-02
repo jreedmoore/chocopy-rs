@@ -262,8 +262,9 @@ impl<'a> Lexer<'a> {
         let mut buf = String::new();
         buf.push(first);
         loop {
-            if let Some(c) = self.advance() {
+            if let Some(c) = self.peek() {
                 if c.is_alphanumeric() {
+                    let c = self.advance().unwrap();
                     buf.push(c);
                     continue;
                 }
@@ -349,12 +350,14 @@ impl<'a> Lexer<'a> {
     fn scan_number(&mut self, first: char) -> Result<Span, LexError> {
         let mut acc: u32 = first.to_digit(10).unwrap();
         loop {
-            if let Some(c) = self.advance() {
+            if let Some(c) = self.peek() {
                 if c.is_digit(10) {
+                    let c = self.advance().unwrap();
                     acc *= 10;
                     acc += c.to_digit(10).unwrap();
                     continue;
                 } else {
+                    break;
                 }
             }
             break;
@@ -466,7 +469,6 @@ mod tests {
 
     fn assert_lex_eq(input: &str, tokens: Vec<Token>) {
         let lexer = Lexer::new(input);
-        //let output = lexer.filter_map(|r| r.ok().map(|s| s.token)).collect::<Vec<_>>();
         let mut output = vec![];
         let mut errs = vec![];
         for r in lexer {
@@ -477,6 +479,20 @@ mod tests {
         }
         assert_eq!(output, tokens, "mismatch for: {}", input);
         assert_eq!(errs, vec![], "errors for: {}", input);
+    }
+
+    #[test]
+    fn test_one() {
+        assert_lex_eq(
+            "[None, 2]",
+            vec![
+                Token::OpenBracket,
+                Token::None,
+                Token::Comma,
+                Token::Integer(2),
+                Token::CloseBracket,
+            ],
+        );
     }
 
     #[test]
