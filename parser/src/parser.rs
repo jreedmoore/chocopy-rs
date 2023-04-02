@@ -34,7 +34,7 @@ impl<'a> Parser<'a> {
         if self.errors.is_empty() {
             Ok(prog)
         } else {
-            Err(self.errors.pop().expect("not empty"))
+            Err(self.errors.first().cloned().expect("not empty"))
         }
     }
 
@@ -71,10 +71,12 @@ impl<'a> Parser<'a> {
     fn advance(&mut self) -> Option<Token> {
         if let Some(span) = self.peek.pop_front() {
             self.current = Some(span.clone());
+            println!("advance lexer {:?}", span.token);
             Some(span.token)
         } else {
             if let Some(span) = self.get_next() {
                 self.current = Some(span.clone());
+                println!("advance peek {:?}", span.token);
                 Some(span.token)
             } else {
                 self.error(ParseError::UnexpectedEof);
@@ -387,7 +389,10 @@ impl<'a> Parser<'a> {
             Token::IdString(name) => Some(ast::Type::Id(ast::Identifier {
                 name: name.to_string(),
             })),
-            Token::OpenBracket => Some(ast::Type::List(Box::new(self.type_rule()?))),
+            Token::OpenBracket => {
+                self.advance();
+                Some(ast::Type::List(Box::new(self.type_rule()?)))
+            },
             _ => return None,
         };
         self.advance();
@@ -428,7 +433,11 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            let infix_rule = self.peek().map(Parser::parse_table).map(|r| r.infix).flatten();
+            let infix_rule = self
+                .peek()
+                .map(Parser::parse_table)
+                .map(|r| r.infix)
+                .flatten();
 
             if let Some(pf) = infix_rule {
                 if pf.power.left_bp() < min_bp {
@@ -498,25 +507,34 @@ impl<'a> Parser<'a> {
             | Token::Integer(_)
             | Token::String(_)
             | Token::IdString(_) => ParseRule::prefix(Parser::literal_exp, 0),
-            Token::OpenParen => ParseRule::prefix(Parser::grouping, 0), //todo, also needs to be infix for function call syntax
-            Token::OpenBracket => ParseRule::prefix(Parser::list_literal_exp, 0),
+            Token::OpenParen => ParseRule::both(Parser::grouping, 0, Parser::call_exp, 8, 8),
+            Token::OpenBracket => {
+                ParseRule::both(Parser::list_literal_exp, 0, Parser::access_exp, 0, 0)
+            }
             Token::Equal
             | Token::NotEqual
             | Token::LessThan
             | Token::GreaterThan
             | Token::LessThanEqual
             | Token::GreaterThanEqual
-            | Token::Is => ParseRule::infix(Parser::infix_exp, 8, 8),
-            Token::Plus => ParseRule::infix(Parser::infix_exp, 9, 10),
-            Token::Minus => ParseRule::infix(Parser::infix_exp, 9, 10), //todo, needs different! precedence for unary and binary
-            Token::Multiply | Token::IntegerDiv | Token::Modulo => ParseRule::infix(Parser::infix_exp, 11, 12),
-            Token::Dot => ParseRule::infix(Parser::access_exp, 13, 14),
+            | Token::Is => ParseRule::infix(Parser::infix_exp, 9, 10),
+            Token::Plus => ParseRule::infix(Parser::infix_exp, 11, 12),
+            Token::Minus => ParseRule::both(Parser::unary_exp, 17, Parser::infix_exp, 9, 10), //todo, needs different! precedence for unary and binary
+            Token::Multiply | Token::IntegerDiv | Token::Modulo => {
+                ParseRule::infix(Parser::infix_exp, 13, 14)
+            }
+            Token::Dot => ParseRule::infix(Parser::access_exp, 15, 16),
+            Token::Identifier(_) => ParseRule::prefix(Parser::identifier_exp, 0),
             _ => ParseRule::default(Parser::exp_error),
         }
     }
 
     fn literal_exp(&mut self, _min_bp: usize) -> Option<ast::Expression> {
         Some(ast::Expression::Lit(self.literal()?))
+    }
+
+    fn identifier_exp(&mut self, _min_bp: usize) -> Option<ast::Expression> {
+        Some(ast::Expression::Id(self.identifier()?))
     }
 
     fn grouping(&mut self, _min_bp: usize) -> Option<ast::Expression> {
@@ -561,23 +579,73 @@ impl<'a> Parser<'a> {
             Token::Multiply => ast::BinOp::Multiply,
             Token::IntegerDiv => ast::BinOp::IntegerDiv,
             Token::Modulo => ast::BinOp::Modulo,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
         let rhs = self.expression_bp(min_bp)?;
         let lhs = self.exprs.pop_back()?;
 
-        Some(ast::Expression::BinaryOp(bin_op, Box::new(lhs), Box::new(rhs))) 
+        Some(ast::Expression::BinaryOp(
+            bin_op,
+            Box::new(lhs),
+            Box::new(rhs),
+        ))
     }
 
     fn access_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
-        todo!()
+        let token = self.advance()?;
+        match token {
+            Token::OpenBracket => {
+                let rhs = self.expression_bp(min_bp)?;
+                let lhs = self.exprs.pop_back()?;
+                self.consume(Token::CloseBracket)?;
+                Some(ast::Expression::Index(ast::IndexExpression {
+                    expr: Box::new(lhs),
+                    index: Box::new(rhs),
+                }))
+            }
+            Token::Dot => {
+                let id = self.identifier()?;
+                let lhs = self.exprs.pop_back()?;
+                Some(ast::Expression::Member(ast::MemberExpression {
+                    expr: Box::new(lhs),
+                    id,
+                }))
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn call_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
+        self.consume(Token::OpenParen)?;
+        let lhs = self.exprs.pop_back()?;
+        let mut args = vec![];
+        loop {
+            args.push(self.expression_bp(0)?);
+            if self.check(Token::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        self.consume(Token::CloseParen)?;
+        Some(match lhs {
+            ast::Expression::Member(m) => ast::Expression::MemberCall(m, args),
+            ast::Expression::Id(id) => ast::Expression::Call(id, args),
+            t => panic!("Unexpected lhs in call {:?}", t)
+        })
+    }
+
+    fn unary_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
+        self.consume(Token::Minus)?;
+        let e = self.expression_bp(min_bp)?;
+        Some(ast::Expression::UnaryMinus(Box::new(e)))
     }
 }
 
 type PF<'a, 'b> = fn(&'b mut Parser<'a>, usize) -> Option<ast::Expression>;
 struct ParseFun<'a, 'b> {
     f: PF<'a, 'b>,
-    power: BindingPower
+    power: BindingPower,
 }
 struct ParseRule<'a, 'b> {
     prefix: Option<ParseFun<'a, 'b>>,
@@ -586,7 +654,10 @@ struct ParseRule<'a, 'b> {
 impl<'a, 'b> ParseRule<'a, 'b> {
     fn prefix(f: PF<'a, 'b>, bp: usize) -> ParseRule<'a, 'b> {
         ParseRule {
-            prefix: Some(ParseFun { f, power: BindingPower::Prefix(bp) }),
+            prefix: Some(ParseFun {
+                f,
+                power: BindingPower::Prefix(bp),
+            }),
             infix: None,
         }
     }
@@ -594,14 +665,23 @@ impl<'a, 'b> ParseRule<'a, 'b> {
     fn infix(f: PF<'a, 'b>, lbp: usize, rbp: usize) -> ParseRule<'a, 'b> {
         ParseRule {
             prefix: None,
-            infix: Some(ParseFun { f, power: BindingPower::Infix(lbp, rbp) }),
+            infix: Some(ParseFun {
+                f,
+                power: BindingPower::Infix(lbp, rbp),
+            }),
         }
     }
 
-    fn both(p: PF<'a, 'b>, i: PF<'a, 'b>, pbp: usize, lbp: usize, rbp: usize) -> ParseRule<'a, 'b> {
+    fn both(p: PF<'a, 'b>, pbp: usize, i: PF<'a, 'b>, lbp: usize, rbp: usize) -> ParseRule<'a, 'b> {
         ParseRule {
-            prefix: Some(ParseFun { f: p, power: BindingPower::Prefix(pbp) }),
-            infix: Some(ParseFun { f: i, power: BindingPower::Infix(lbp, rbp) }),
+            prefix: Some(ParseFun {
+                f: p,
+                power: BindingPower::Prefix(pbp),
+            }),
+            infix: Some(ParseFun {
+                f: i,
+                power: BindingPower::Infix(lbp, rbp),
+            }),
         }
     }
 
@@ -630,7 +710,7 @@ impl BindingPower {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ParseError {
     LexError(lexer::LexError),
     UnexpectedEof,
@@ -677,7 +757,7 @@ mod tests {
 
     #[test]
     fn test_one() {
-        assert_parses("1 * 2 + 3");
+        assert_parses("a < len(b)");
         //assert_parses("1 + 2 * 3 + 4");
     }
 
@@ -696,6 +776,12 @@ mod tests {
         assert_parses("True and False or True");
         assert_parses("True or False and True");
         assert_parses("1 + 2 * 3 + 4");
+        assert_parses("a.b");
+        assert_parses("a[1]");
+        assert_parses("a(1)");
+        assert_parses("a(1, 2)");
+        assert_parses("a.b(1, 2)");
+        assert_parses("a < len(b)");
         assert_fails("((1)");
         assert_fails("(1))");
         //assert_fails("True == not False");

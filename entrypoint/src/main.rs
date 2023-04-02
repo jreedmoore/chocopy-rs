@@ -4,7 +4,8 @@ use parser::lexer::Lexer;
 use parser::parser::Parser;
 
 fn main() {
-    let filename = std::env::args().next().expect("Expected filename");
+    let args = std::env::args().collect::<Vec<_>>();
+    let filename = &args[1];
     let input = fs::read_to_string(filename).unwrap();
 
     let lexer = Lexer::new(&input);

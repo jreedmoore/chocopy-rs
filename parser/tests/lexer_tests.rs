@@ -1,6 +1,7 @@
 use std::{error::Error, fs};
 
 use parser::lexer;
+use parser::parser::Parser;
 
 #[test]
 fn test_lexer_on_examples() -> Result<(), Box<dyn Error>> {
@@ -18,6 +19,7 @@ fn test_lexer_on_examples() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_lexer_with_include_str() -> Result<(), Box<dyn Error>> {
-    lexer::lex(include_str!("../data/examples/ex1.py"))?;
+    let mut p = Parser::new(lexer::Lexer::new(include_str!("../data/examples/ex1.py")));
+    p.parse()?;
     Ok(())
 }

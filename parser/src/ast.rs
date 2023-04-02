@@ -110,8 +110,8 @@ pub enum Expression {
     ListLiteral(Vec<Expression>),
     Member(MemberExpression),
     Index(IndexExpression),
-    MemberCall(MemberExpression, Option<Vec<Expression>>),
-    Call(Identifier, Option<Vec<Expression>>),
+    MemberCall(MemberExpression, Vec<Expression>),
+    Call(Identifier, Vec<Expression>),
     BinaryOp(BinOp, Box<Expression>, Box<Expression>),
     UnaryMinus(Box<Expression>),
 }
