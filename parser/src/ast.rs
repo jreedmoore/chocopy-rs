@@ -118,7 +118,8 @@ pub enum Expression {
 
 #[derive(Debug)]
 pub enum LogicalBinOp {
-    And, Or
+    And,
+    Or,
 }
 #[derive(Debug)]
 pub struct MemberExpression {

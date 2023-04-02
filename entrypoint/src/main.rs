@@ -3,7 +3,6 @@ use std::fs;
 use parser::lexer::Lexer;
 use parser::parser::Parser;
 
-
 fn main() {
     let filename = std::env::args().next().expect("Expected filename");
     let input = fs::read_to_string(filename).unwrap();
@@ -13,6 +12,6 @@ fn main() {
 
     match parser.parse() {
         Ok(prog) => println!("Parsed into {:?}", prog),
-        Err(e) => println!("Failed with {:?}", e)
+        Err(e) => println!("Failed with {:?}", e),
     }
 }

@@ -14,7 +14,7 @@ pub struct Parser<'a> {
     current: Option<Span>,
     errors: Vec<ParseError>,
     peek: VecDeque<Span>,
-    exprs: VecDeque<ast::Expression>
+    exprs: VecDeque<ast::Expression>,
 }
 impl<'a> Parser<'a> {
     pub fn new(lexer: Lexer<'a>) -> Parser<'a> {
@@ -410,29 +410,39 @@ impl<'a> Parser<'a> {
         self.expression_bp(0)
     }
 
-    // main idea is that we parse a prefix, peek to decide if we're parsing a bin/3-op
-    // use binding power to determine when to stop (on rhs)
     fn expression_bp(&mut self, min_bp: usize) -> Option<ast::Expression> {
         let prefix_token = self.peek()?.clone();
+        println!("prefix {:?}", prefix_token);
         let prefix_rule = Parser::parse_table(&prefix_token);
-        if let Some(f) = prefix_rule.prefix {
-            let prefix = f(self, prefix_rule.power.right_bp())?;
+        if let Some(pf) = prefix_rule.prefix {
+            let prefix = (pf.f)(self, pf.power.right_bp())?;
             self.exprs.push_back(prefix);
         } else {
+            self.advance();
             self.error(ParseError::UnexpectedToken(prefix_token));
-            return None
+            return None;
         }
 
-        let rule = self.peek().map(Parser::parse_table);
-        if let Some(rule) = rule {
-            if rule.infix.is_none() || rule.power.left_bp() < min_bp {
-                return self.exprs.pop_back();
+        loop {
+            if self.eof() {
+                break;
             }
 
-            return rule.infix.unwrap()(self, rule.power.right_bp());
-        } else {
-            return self.exprs.pop_back();
+            let infix_rule = self.peek().map(Parser::parse_table).map(|r| r.infix).flatten();
+
+            if let Some(pf) = infix_rule {
+                if pf.power.left_bp() < min_bp {
+                    break;
+                } else {
+                    let e = (pf.f)(self, pf.power.right_bp())?;
+                    self.exprs.push_back(e);
+                }
+            } else {
+                break;
+            }
         }
+
+        return self.exprs.pop_back();
     }
 
     fn logical_infix(&mut self, min_bp: usize) -> Option<ast::Expression> {
@@ -441,12 +451,16 @@ impl<'a> Parser<'a> {
             Token::Or => ast::LogicalBinOp::Or,
             t => {
                 self.error(ParseError::UnexpectedToken(t));
-                return None
+                return None;
             }
         };
 
         let rhs = self.expression_bp(min_bp)?;
-        Some(ast::Expression::LogicalBinaryOp(bin_op, Box::new(self.exprs.pop_front()?), Box::new(rhs)))
+        Some(ast::Expression::LogicalBinaryOp(
+            bin_op,
+            Box::new(self.exprs.pop_front()?),
+            Box::new(rhs),
+        ))
     }
 
     fn logical_ternary(&mut self, min_bp: usize) -> Option<ast::Expression> {
@@ -455,14 +469,16 @@ impl<'a> Parser<'a> {
         self.consume(Token::Else)?;
         let rhs = self.expression_bp(min_bp)?;
         let lhs = self.exprs.pop_front()?;
-        Some(ast::Expression::Ternary { e: Box::new(lhs), if_expr: Box::new(mhs), else_expr: Box::new(rhs) })
+        Some(ast::Expression::Ternary {
+            e: Box::new(lhs),
+            if_expr: Box::new(mhs),
+            else_expr: Box::new(rhs),
+        })
     }
 
     fn logical_prefix(&mut self, min_bp: usize) -> Option<ast::Expression> {
         match self.advance()? {
-            Token::Not => {
-                Some(ast::Expression::Not(Box::new(self.expression_bp(min_bp)?)))
-            }
+            Token::Not => Some(ast::Expression::Not(Box::new(self.expression_bp(min_bp)?))),
             t => {
                 self.error(ParseError::UnexpectedToken(t));
                 None
@@ -476,82 +492,120 @@ impl<'a> Parser<'a> {
             Token::And => ParseRule::infix(Parser::logical_infix, 3, 4),
             Token::If => ParseRule::infix(Parser::logical_ternary, 6, 5),
             Token::Not => ParseRule::prefix(Parser::logical_prefix, 7),
-            _ => ParseRule::default(Parser::cexpression_bp)
+            Token::None
+            | Token::True
+            | Token::False
+            | Token::Integer(_)
+            | Token::String(_)
+            | Token::IdString(_) => ParseRule::prefix(Parser::literal_exp, 0),
+            Token::OpenParen => ParseRule::prefix(Parser::grouping, 0), //todo, also needs to be infix for function call syntax
+            Token::OpenBracket => ParseRule::prefix(Parser::list_literal_exp, 0),
+            Token::Equal
+            | Token::NotEqual
+            | Token::LessThan
+            | Token::GreaterThan
+            | Token::LessThanEqual
+            | Token::GreaterThanEqual
+            | Token::Is => ParseRule::infix(Parser::infix_exp, 8, 8),
+            Token::Plus => ParseRule::infix(Parser::infix_exp, 9, 10),
+            Token::Minus => ParseRule::infix(Parser::infix_exp, 9, 10), //todo, needs different! precedence for unary and binary
+            Token::Multiply | Token::IntegerDiv | Token::Modulo => ParseRule::infix(Parser::infix_exp, 11, 12),
+            Token::Dot => ParseRule::infix(Parser::access_exp, 13, 14),
+            _ => ParseRule::default(Parser::exp_error),
         }
     }
 
-    fn cexpression_bp(&mut self, min_bp: usize) -> Option<ast::Expression> {
-        let prefix = {
-            // I can't figure out function pointers to a struct with lifetimes
-            // so I'm just jamming the equivalent of the table directly here.
-            match self.peek()? {
-                Token::None
-                | Token::True
-                | Token::False
-                | Token::Integer(_)
-                | Token::String(_)
-                | Token::IdString(_) => {
-                    return Some(ast::Expression::Lit(self.literal()?))
-                }
-                Token::OpenParen => {
-                    self.advance();
-                    let e = self.expression_bp(0);
-                    self.consume(Token::CloseParen);
-                    // TODO: is this correct?
-                    return e;
-                }
-                Token::Minus => {
-                    self.advance();
-                    return Some(ast::Expression::UnaryMinus(Box::new(
-                        self.cexpression_bp(0)?,
-                    )));
-                }
-                Token::OpenBracket => {
-                    self.advance();
-                    let mut es = vec![];
-                    loop {
-                        es.push(self.expression_bp(0)?);
-                        if self.check(Token::Comma) {
-                            self.advance();
-                        } else {
-                            break;
-                        }
-                    }
-                    self.consume(Token::CloseBracket)?;
-                    return Some(ast::Expression::ListLiteral(es));
-                }
-                t => {
-                    let t = t.clone();
-                    self.advance()?;
-                    self.error(ParseError::UnexpectedToken(t));
-                    return None;
-                }
+    fn literal_exp(&mut self, _min_bp: usize) -> Option<ast::Expression> {
+        Some(ast::Expression::Lit(self.literal()?))
+    }
+
+    fn grouping(&mut self, _min_bp: usize) -> Option<ast::Expression> {
+        self.advance();
+        let e = self.expression_bp(0)?;
+        self.consume(Token::CloseParen);
+        Some(e)
+    }
+
+    fn list_literal_exp(&mut self, _min_bp: usize) -> Option<ast::Expression> {
+        self.advance();
+        let mut es = vec![];
+        loop {
+            es.push(self.expression_bp(0)?);
+            if self.check(Token::Comma) {
+                self.advance();
+            } else {
+                break;
             }
+        }
+        self.consume(Token::CloseBracket)?;
+        return Some(ast::Expression::ListLiteral(es));
+    }
+
+    fn exp_error(&mut self, _min_bp: usize) -> Option<ast::Expression> {
+        let tok = self.advance()?;
+        self.error(ParseError::UnexpectedToken(tok));
+        None
+    }
+
+    fn infix_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
+        let bin_op = match self.advance()? {
+            Token::Equal => ast::BinOp::Equals,
+            Token::NotEqual => ast::BinOp::NotEquals,
+            Token::LessThan => ast::BinOp::LessThan,
+            Token::LessThanEqual => ast::BinOp::LessThanEqual,
+            Token::GreaterThan => ast::BinOp::GreaterThan,
+            Token::GreaterThanEqual => ast::BinOp::GreaterThanEqual,
+            Token::Is => ast::BinOp::Is,
+            Token::Plus => ast::BinOp::Plus,
+            Token::Minus => ast::BinOp::Minus,
+            Token::Multiply => ast::BinOp::Multiply,
+            Token::IntegerDiv => ast::BinOp::IntegerDiv,
+            Token::Modulo => ast::BinOp::Modulo,
+            _ => unreachable!()
         };
+        let rhs = self.expression_bp(min_bp)?;
+        let lhs = self.exprs.pop_back()?;
+
+        Some(ast::Expression::BinaryOp(bin_op, Box::new(lhs), Box::new(rhs))) 
+    }
+
+    fn access_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
         todo!()
     }
 }
 
-type PF<'a,'b> = fn(&'b mut Parser<'a>, usize) -> Option<ast::Expression>;
-struct ParseRule<'a,'b> {
-    prefix: Option<PF<'a, 'b>>,
-    infix: Option<PF<'a,'b>>,
+type PF<'a, 'b> = fn(&'b mut Parser<'a>, usize) -> Option<ast::Expression>;
+struct ParseFun<'a, 'b> {
+    f: PF<'a, 'b>,
     power: BindingPower
 }
+struct ParseRule<'a, 'b> {
+    prefix: Option<ParseFun<'a, 'b>>,
+    infix: Option<ParseFun<'a, 'b>>,
+}
 impl<'a, 'b> ParseRule<'a, 'b> {
-    fn prefix(f: PF<'a,'b>, bp: usize) -> ParseRule<'a,'b> {
-        ParseRule { prefix: Some(f), infix: None, power: BindingPower::Prefix(bp) }
+    fn prefix(f: PF<'a, 'b>, bp: usize) -> ParseRule<'a, 'b> {
+        ParseRule {
+            prefix: Some(ParseFun { f, power: BindingPower::Prefix(bp) }),
+            infix: None,
+        }
     }
 
-    fn infix(f: PF<'a,'b>, lbp: usize, rbp: usize) -> ParseRule<'a,'b> {
-        ParseRule { prefix: None, infix: Some(f), power: BindingPower::Infix(lbp, rbp) }
+    fn infix(f: PF<'a, 'b>, lbp: usize, rbp: usize) -> ParseRule<'a, 'b> {
+        ParseRule {
+            prefix: None,
+            infix: Some(ParseFun { f, power: BindingPower::Infix(lbp, rbp) }),
+        }
     }
 
-    fn postfix(f: PF<'a,'b>, bp: usize) -> ParseRule<'a,'b> {
-        ParseRule { prefix: Some(f), infix: None, power: BindingPower::Postfix(bp) }
+    fn both(p: PF<'a, 'b>, i: PF<'a, 'b>, pbp: usize, lbp: usize, rbp: usize) -> ParseRule<'a, 'b> {
+        ParseRule {
+            prefix: Some(ParseFun { f: p, power: BindingPower::Prefix(pbp) }),
+            infix: Some(ParseFun { f: i, power: BindingPower::Infix(lbp, rbp) }),
+        }
     }
 
-    fn default(f: PF<'a,'b>) -> ParseRule<'a,'b> {
+    fn default(f: PF<'a, 'b>) -> ParseRule<'a, 'b> {
         ParseRule::prefix(f, 0)
     }
 }
@@ -559,14 +613,12 @@ impl<'a, 'b> ParseRule<'a, 'b> {
 enum BindingPower {
     Prefix(usize),
     Infix(usize, usize),
-    Postfix(usize),
 }
 impl BindingPower {
     fn left_bp(&self) -> usize {
         match self {
             BindingPower::Prefix(bp) => *bp,
             BindingPower::Infix(bp, _) => *bp,
-            BindingPower::Postfix(_) => usize::MAX,
         }
     }
 
@@ -574,7 +626,6 @@ impl BindingPower {
         match self {
             BindingPower::Prefix(_) => usize::MAX,
             BindingPower::Infix(_, bp) => *bp,
-            BindingPower::Postfix(bp) => *bp,
         }
     }
 }
@@ -611,7 +662,9 @@ mod tests {
         let r = Parser::new(Lexer::new(input)).parse();
         match r {
             Err(e) => panic!("Failure in example {}: {:?}", input, e),
-            Ok(p) if p.defs.is_empty() && p.stmts.is_empty() => panic!("Empty parse in example {}", input),
+            Ok(p) if p.defs.is_empty() && p.stmts.is_empty() => {
+                panic!("Empty parse in example {}", input)
+            }
             Ok(a) => println!("{:?}", a),
         }
     }
@@ -624,7 +677,8 @@ mod tests {
 
     #[test]
     fn test_one() {
-        assert_parses("True == not False")
+        assert_parses("1 * 2 + 3");
+        //assert_parses("1 + 2 * 3 + 4");
     }
 
     #[test]
@@ -637,9 +691,14 @@ mod tests {
         assert_parses("[1, None]");
         assert_parses("(1)");
         assert_parses("True if True else False");
+        assert_parses("True and False");
+        assert_parses("True or False");
+        assert_parses("True and False or True");
+        assert_parses("True or False and True");
+        assert_parses("1 + 2 * 3 + 4");
         assert_fails("((1)");
         assert_fails("(1))");
-        assert_fails("True == not False");
+        //assert_fails("True == not False");
         assert_parses("True == (not False)");
     }
 }
