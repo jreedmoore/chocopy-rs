@@ -12,9 +12,9 @@ pub struct Parser<'a> {
     lexer: Lexer<'a>,
     eof: bool,
     current: Option<Span>,
-    errors: Vec<ParseError>,
+    errors: Vec<AnnotatedParseError>,
     peek: VecDeque<Span>,
-    exprs: VecDeque<ast::Expression>,
+    exprs: Vec<ast::Expression>,
 }
 impl<'a> Parser<'a> {
     pub fn new(lexer: Lexer<'a>) -> Parser<'a> {
@@ -24,12 +24,12 @@ impl<'a> Parser<'a> {
             peek: VecDeque::new(),
             current: None,
             errors: vec![],
-            exprs: VecDeque::new(),
+            exprs: vec![],
         }
     }
 
     /// Main entry point
-    pub fn parse(&mut self) -> Result<ast::Program, ParseError> {
+    pub fn parse(&mut self) -> Result<ast::Program, AnnotatedParseError> {
         let prog = self.program();
         if self.errors.is_empty() {
             Ok(prog)
@@ -39,7 +39,13 @@ impl<'a> Parser<'a> {
     }
 
     fn error(&mut self, error: ParseError) {
-        self.errors.push(error);
+        println!("emitting error {:?}", error);
+        let ann = if let Some(span) = &self.current {
+            AnnotatedParseError { begin: span.start.offset, end: span.end.offset, error: error }
+        } else {
+            AnnotatedParseError { begin: 0, end: 0, error: error }
+        };
+        self.errors.push(ann);
     }
 
     fn consume(&mut self, expected: Token) -> Option<()> {
@@ -417,11 +423,11 @@ impl<'a> Parser<'a> {
 
     fn expression_bp(&mut self, min_bp: usize) -> Option<ast::Expression> {
         let prefix_token = self.peek()?.clone();
-        println!("prefix {:?}", prefix_token);
+        println!("e_bp token {:?} stack: {:?}", prefix_token, self.exprs);
         let prefix_rule = Parser::parse_table(&prefix_token);
         if let Some(pf) = prefix_rule.prefix {
             let prefix = (pf.f)(self, pf.power.right_bp())?;
-            self.exprs.push_back(prefix);
+            self.exprs.push(prefix);
         } else {
             self.advance();
             self.error(ParseError::UnexpectedToken(prefix_token));
@@ -444,14 +450,14 @@ impl<'a> Parser<'a> {
                     break;
                 } else {
                     let e = (pf.f)(self, pf.power.right_bp())?;
-                    self.exprs.push_back(e);
+                    self.exprs.push(e);
                 }
             } else {
                 break;
             }
         }
 
-        return self.exprs.pop_back();
+        return self.exprs.pop();
     }
 
     fn logical_infix(&mut self, min_bp: usize) -> Option<ast::Expression> {
@@ -467,7 +473,7 @@ impl<'a> Parser<'a> {
         let rhs = self.expression_bp(min_bp)?;
         Some(ast::Expression::LogicalBinaryOp(
             bin_op,
-            Box::new(self.exprs.pop_front()?),
+            Box::new(self.exprs.pop()?),
             Box::new(rhs),
         ))
     }
@@ -477,7 +483,7 @@ impl<'a> Parser<'a> {
         let mhs = self.expression_bp(0)?;
         self.consume(Token::Else)?;
         let rhs = self.expression_bp(min_bp)?;
-        let lhs = self.exprs.pop_front()?;
+        let lhs = self.exprs.pop()?;
         Some(ast::Expression::Ternary {
             e: Box::new(lhs),
             if_expr: Box::new(mhs),
@@ -507,10 +513,8 @@ impl<'a> Parser<'a> {
             | Token::Integer(_)
             | Token::String(_)
             | Token::IdString(_) => ParseRule::prefix(Parser::literal_exp, 0),
-            Token::OpenParen => ParseRule::both(Parser::grouping, 0, Parser::call_exp, 8, 8),
-            Token::OpenBracket => {
-                ParseRule::both(Parser::list_literal_exp, 0, Parser::access_exp, 0, 0)
-            }
+            Token::OpenParen => ParseRule::both(Parser::grouping, 0, Parser::call_exp, 20, 21),
+            Token::OpenBracket => ParseRule::both(Parser::list_literal_exp, 0, Parser::access_exp, 22, 23),
             Token::Equal
             | Token::NotEqual
             | Token::LessThan
@@ -581,8 +585,8 @@ impl<'a> Parser<'a> {
             Token::Modulo => ast::BinOp::Modulo,
             _ => unreachable!(),
         };
+        let lhs = self.exprs.pop()?;
         let rhs = self.expression_bp(min_bp)?;
-        let lhs = self.exprs.pop_back()?;
 
         Some(ast::Expression::BinaryOp(
             bin_op,
@@ -596,7 +600,7 @@ impl<'a> Parser<'a> {
         match token {
             Token::OpenBracket => {
                 let rhs = self.expression_bp(min_bp)?;
-                let lhs = self.exprs.pop_back()?;
+                let lhs = self.exprs.pop()?;
                 self.consume(Token::CloseBracket)?;
                 Some(ast::Expression::Index(ast::IndexExpression {
                     expr: Box::new(lhs),
@@ -605,7 +609,7 @@ impl<'a> Parser<'a> {
             }
             Token::Dot => {
                 let id = self.identifier()?;
-                let lhs = self.exprs.pop_back()?;
+                let lhs = self.exprs.pop()?;
                 Some(ast::Expression::Member(ast::MemberExpression {
                     expr: Box::new(lhs),
                     id,
@@ -617,7 +621,8 @@ impl<'a> Parser<'a> {
 
     fn call_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
         self.consume(Token::OpenParen)?;
-        let lhs = self.exprs.pop_back()?;
+        println!("call_exp {:?}", self.exprs);
+        let lhs = self.exprs.pop()?;
         let mut args = vec![];
         loop {
             args.push(self.expression_bp(0)?);
@@ -732,6 +737,13 @@ impl std::error::Error for ParseError {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct AnnotatedParseError {
+    begin: usize,
+    end: usize,
+    error: ParseError
+}
+
 #[cfg(test)]
 mod tests {
     use super::Parser;
@@ -757,7 +769,8 @@ mod tests {
 
     #[test]
     fn test_one() {
-        assert_parses("a < len(b)");
+        assert_parses("x == items[i]");
+        //assert_parses("a < len(b)");
         //assert_parses("1 + 2 * 3 + 4");
     }
 

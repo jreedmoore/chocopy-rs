@@ -84,7 +84,7 @@ impl Token {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Location {
-    offset: usize,
+    pub offset: usize,
 }
 impl Location {
     fn default() -> Location {
