@@ -436,28 +436,26 @@ impl<'a> Parser<'a> {
     }
 
     fn logical_infix(&mut self, min_bp: usize) -> Option<ast::Expression> {
-        match self.advance()? {
-            op @ (Token::And | Token::Or) => {
-                let bin_op = match op {
-                    Token::And => ast::LogicalBinOp::And,
-                    Token::Or => ast::LogicalBinOp::Or,
-                    _ => unimplemented!()
-                };
-                let rhs = self.expression_bp(min_bp)?;
-                Some(ast::Expression::LogicalBinaryOp(bin_op, Box::new(self.exprs.pop_front()?), Box::new(rhs)))
-            },
-            Token::If => {
-                let mhs = self.expression_bp(0)?;
-                self.consume(Token::Else)?;
-                let rhs = self.expression_bp(min_bp)?;
-                let lhs = self.exprs.pop_front()?;
-                Some(ast::Expression::Ternary { e: Box::new(lhs), if_expr: Box::new(mhs), else_expr: Box::new(rhs) })
-            }
+        let bin_op = match self.advance()? {
+            Token::And => ast::LogicalBinOp::And,
+            Token::Or => ast::LogicalBinOp::Or,
             t => {
                 self.error(ParseError::UnexpectedToken(t));
                 return None
             }
-        }
+        };
+
+        let rhs = self.expression_bp(min_bp)?;
+        Some(ast::Expression::LogicalBinaryOp(bin_op, Box::new(self.exprs.pop_front()?), Box::new(rhs)))
+    }
+
+    fn logical_ternary(&mut self, min_bp: usize) -> Option<ast::Expression> {
+        self.consume(Token::If)?;
+        let mhs = self.expression_bp(0)?;
+        self.consume(Token::Else)?;
+        let rhs = self.expression_bp(min_bp)?;
+        let lhs = self.exprs.pop_front()?;
+        Some(ast::Expression::Ternary { e: Box::new(lhs), if_expr: Box::new(mhs), else_expr: Box::new(rhs) })
     }
 
     fn logical_prefix(&mut self, min_bp: usize) -> Option<ast::Expression> {
@@ -476,7 +474,7 @@ impl<'a> Parser<'a> {
         match token {
             Token::Or => ParseRule::infix(Parser::logical_infix, 1, 2),
             Token::And => ParseRule::infix(Parser::logical_infix, 3, 4),
-            Token::If => ParseRule::infix(Parser::logical_infix, 3, 4),
+            Token::If => ParseRule::infix(Parser::logical_ternary, 6, 5),
             Token::Not => ParseRule::prefix(Parser::logical_prefix, 7),
             _ => ParseRule::default(Parser::cexpression_bp)
         }
@@ -638,8 +636,8 @@ mod tests {
         assert_parses("None");
         assert_parses("[1, None]");
         assert_parses("(1)");
+        assert_parses("True if True else False");
         assert_fails("((1)");
-        // hangs
         assert_fails("(1))");
         assert_fails("True == not False");
         assert_parses("True == (not False)");
