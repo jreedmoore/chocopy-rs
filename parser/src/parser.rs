@@ -426,28 +426,40 @@ impl<'a> Parser<'a> {
         let rule = self.peek().map(Parser::parse_table);
         if let Some(rule) = rule {
             if rule.infix.is_none() || rule.power.left_bp() < min_bp {
-                return self.exprs.pop_front();
+                return self.exprs.pop_back();
             }
 
             return rule.infix.unwrap()(self, rule.power.right_bp());
         } else {
-            return self.exprs.pop_front();
+            return self.exprs.pop_back();
         }
     }
 
-    fn logical_binary(&mut self, min_bp: usize) -> Option<ast::Expression> {
-        let bin_op = match self.advance()? {
-            Token::And => ast::LogicalBinOp::And,
-            Token::Or => ast::LogicalBinOp::Or,
+    fn logical_infix(&mut self, min_bp: usize) -> Option<ast::Expression> {
+        match self.advance()? {
+            op @ (Token::And | Token::Or) => {
+                let bin_op = match op {
+                    Token::And => ast::LogicalBinOp::And,
+                    Token::Or => ast::LogicalBinOp::Or,
+                    _ => unimplemented!()
+                };
+                let rhs = self.expression_bp(min_bp)?;
+                Some(ast::Expression::LogicalBinaryOp(bin_op, Box::new(self.exprs.pop_front()?), Box::new(rhs)))
+            },
+            Token::If => {
+                let mhs = self.expression_bp(0)?;
+                self.consume(Token::Else)?;
+                let rhs = self.expression_bp(min_bp)?;
+                let lhs = self.exprs.pop_front()?;
+                Some(ast::Expression::Ternary { e: Box::new(lhs), if_expr: Box::new(mhs), else_expr: Box::new(rhs) })
+            }
             t => {
                 self.error(ParseError::UnexpectedToken(t));
                 return None
             }
-        };
-
-        let rhs = self.expression_bp(min_bp)?;
-        Some(ast::Expression::LogicalBinaryOp(bin_op, Box::new(self.exprs.pop_front().unwrap()), Box::new(rhs)))
+        }
     }
+
     fn logical_prefix(&mut self, min_bp: usize) -> Option<ast::Expression> {
         match self.advance()? {
             Token::Not => {
@@ -462,8 +474,9 @@ impl<'a> Parser<'a> {
 
     fn parse_table<'b>(token: &Token) -> ParseRule<'a, 'b> {
         match token {
-            Token::Or => ParseRule::infix(Parser::logical_binary, 1, 2),
-            Token::And => ParseRule::infix(Parser::logical_binary, 3, 4),
+            Token::Or => ParseRule::infix(Parser::logical_infix, 1, 2),
+            Token::And => ParseRule::infix(Parser::logical_infix, 3, 4),
+            Token::If => ParseRule::infix(Parser::logical_infix, 3, 4),
             Token::Not => ParseRule::prefix(Parser::logical_prefix, 7),
             _ => ParseRule::default(Parser::cexpression_bp)
         }
@@ -504,7 +517,6 @@ impl<'a> Parser<'a> {
                     let mut es = vec![];
                     loop {
                         es.push(self.expression_bp(0)?);
-                        //println!("Expr OpenBracket expect Comma, got {:?}", self.peek());
                         if self.check(Token::Comma) {
                             self.advance();
                         } else {
@@ -516,6 +528,7 @@ impl<'a> Parser<'a> {
                 }
                 t => {
                     let t = t.clone();
+                    self.advance()?;
                     self.error(ParseError::UnexpectedToken(t));
                     return None;
                 }
@@ -608,7 +621,7 @@ mod tests {
 
     #[test]
     fn test_one() {
-        assert_parses("True or False and False")
+        assert_parses("True == not False")
     }
 
     #[test]
@@ -622,8 +635,8 @@ mod tests {
         assert_parses("(1)");
         assert_fails("((1)");
         // hangs
-        //assert_fails("(1))");
+        assert_fails("(1))");
         assert_fails("True == not False");
-        //assert_parses("True == (not False)");
+        assert_parses("True == (not False)");
     }
 }
