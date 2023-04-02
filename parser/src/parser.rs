@@ -413,16 +413,15 @@ impl<'a> Parser<'a> {
     // main idea is that we parse a prefix, peek to decide if we're parsing a bin/3-op
     // use binding power to determine when to stop (on rhs)
     fn expression_bp(&mut self, min_bp: usize) -> Option<ast::Expression> {
-        let prefix = {
-            match self.peek()? {
-                Token::Not => {
-                    self.advance()?;
-                    ast::Expression::Not(Box::new(self.expression_bp(7)?))
-                }
-                _ => self.cexpression()?
-            }
-        };
-        self.exprs.push_back(prefix);
+        let prefix_token = self.peek()?.clone();
+        let prefix_rule = Parser::parse_table(&prefix_token);
+        if let Some(f) = prefix_rule.prefix {
+            let prefix = f(self, prefix_rule.power.right_bp())?;
+            self.exprs.push_back(prefix);
+        } else {
+            self.error(ParseError::UnexpectedToken(prefix_token));
+            return None
+        }
 
         let rule = self.peek().map(Parser::parse_table);
         if let Some(rule) = rule {
@@ -449,12 +448,24 @@ impl<'a> Parser<'a> {
         let rhs = self.expression_bp(min_bp)?;
         Some(ast::Expression::LogicalBinaryOp(bin_op, Box::new(self.exprs.pop_front().unwrap()), Box::new(rhs)))
     }
+    fn logical_prefix(&mut self, min_bp: usize) -> Option<ast::Expression> {
+        match self.advance()? {
+            Token::Not => {
+                Some(ast::Expression::Not(Box::new(self.expression_bp(min_bp)?)))
+            }
+            t => {
+                self.error(ParseError::UnexpectedToken(t));
+                None
+            }
+        }
+    }
 
     fn parse_table<'b>(token: &Token) -> ParseRule<'a, 'b> {
         match token {
             Token::Or => ParseRule::infix(Parser::logical_binary, 1, 2),
             Token::And => ParseRule::infix(Parser::logical_binary, 3, 4),
-            _ => todo!()
+            Token::Not => ParseRule::prefix(Parser::logical_prefix, 7),
+            _ => ParseRule::default(Parser::cexpression_bp)
         }
     }
 
@@ -536,6 +547,10 @@ impl<'a, 'b> ParseRule<'a, 'b> {
 
     fn postfix(f: PF<'a,'b>, bp: usize) -> ParseRule<'a,'b> {
         ParseRule { prefix: Some(f), infix: None, power: BindingPower::Postfix(bp) }
+    }
+
+    fn default(f: PF<'a,'b>) -> ParseRule<'a,'b> {
+        ParseRule::prefix(f, 0)
     }
 }
 
