@@ -8,7 +8,7 @@ use crate::ast;
 use crate::lexer::{self, Lexer, Span, Token};
 
 /// Recursive descent parser with 2 lookahead tokens
-struct Parser<'a> {
+pub struct Parser<'a> {
     lexer: Lexer<'a>,
     eof: bool,
     current: Option<Span>,
@@ -328,7 +328,7 @@ impl<'a> Parser<'a> {
                 let block = self.block()?;
                 Some(ast::Statement::For { id, in_expr, block })
             }
-            t => Some(ast::Statement::Expr(self.expression()?)),
+            _ => Some(ast::Statement::Expr(self.expression()?)),
         }
     }
 
@@ -482,10 +482,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn cexpression(&mut self) -> Option<ast::Expression> {
-        self.cexpression_bp(0)
-    }
-
     fn cexpression_bp(&mut self, min_bp: usize) -> Option<ast::Expression> {
         let prefix = {
             // I can't figure out function pointers to a struct with lifetimes
@@ -536,11 +532,6 @@ impl<'a> Parser<'a> {
         };
         todo!()
     }
-
-    fn id_expression(&mut self) -> Option<ast::Expression> {
-        let id = self.identifier()?;
-        Some(ast::Expression::Id(id))
-    }
 }
 
 type PF<'a,'b> = fn(&'b mut Parser<'a>, usize) -> Option<ast::Expression>;
@@ -583,7 +574,7 @@ impl BindingPower {
 
     fn right_bp(&self) -> usize {
         match self {
-            BindingPower::Prefix(bp) => usize::MAX,
+            BindingPower::Prefix(_) => usize::MAX,
             BindingPower::Infix(_, bp) => *bp,
             BindingPower::Postfix(bp) => *bp,
         }
@@ -596,6 +587,20 @@ pub enum ParseError {
     UnexpectedEof,
     UnexpectedToken(Token),
     EmptyBlock,
+}
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+impl std::error::Error for ParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.source()
+    }
 }
 
 #[cfg(test)]
