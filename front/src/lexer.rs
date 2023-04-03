@@ -117,6 +117,7 @@ pub struct Lexer<'a> {
     start: Location,
     current: Location,
     line_start: bool,
+    line_empty: bool,
     indent_stack: Vec<usize>,
 }
 impl<'a> Lexer<'a> {
@@ -126,6 +127,7 @@ impl<'a> Lexer<'a> {
             start: Location::default(),
             current: Location::default(),
             line_start: true,
+            line_empty: true,
             indent_stack: vec![0],
         }
     }
@@ -163,6 +165,9 @@ impl<'a> Lexer<'a> {
                 if !c.is_whitespace() && self.line_start {
                     self.line_start = false;
                 }
+                if !c.is_whitespace() && c != '#' {
+                    self.line_empty = false;
+                }
                 match c {
                     w if w.is_whitespace() && self.line_start => {
                         let indent = self.scan_indent(w)?;
@@ -178,7 +183,14 @@ impl<'a> Lexer<'a> {
                             return self.report_error(LexError::TabError);
                         }
                     }
-                    '\n' if !self.line_start => self.line_start = false,
+                    '\n' => {
+                        self.line_start = true;
+                        if !self.line_empty {
+                            self.line_empty = true;
+                            return self.span(Token::Newline);
+                        }
+                        self.line_empty = true;
+                    }
                     w if w.is_whitespace() && !self.line_start => continue,
 
                     '(' => return self.span(Token::OpenParen),
@@ -484,15 +496,24 @@ mod tests {
     #[test]
     fn test_one() {
         assert_lex_eq(
-            "[None, 2]",
+            "def foo(a: int):\n\tb = 0\n",
             vec![
-                Token::OpenBracket,
-                Token::None,
-                Token::Comma,
-                Token::Integer(2),
-                Token::CloseBracket,
+                Token::Def,
+                Token::Identifier("foo".to_string()),
+                Token::OpenParen,
+                Token::Identifier("a".to_string()),
+                Token::Colon,
+                Token::Identifier("int".to_string()),
+                Token::CloseParen,
+                Token::Colon,
+                Token::Newline,
+                Token::Indent,
+                Token::Identifier("b".to_string()),
+                Token::Assign,
+                Token::Integer(0),
+                Token::Newline,
             ],
-        );
+        )
     }
 
     #[test]
@@ -526,6 +547,7 @@ mod tests {
         assert_lex_eq("()", vec![Token::OpenParen, Token::CloseParen]);
         assert_lex_eq("# blah blah", vec![]);
         assert_lex_eq("# blah blah\n", vec![]);
+        assert_lex_eq("1234 # blah blah\n", vec![Token::Integer(1234), Token::Newline]);
         assert_lex_eq(
             r#""hello world""#,
             vec![Token::String("hello world".to_string())],
@@ -557,5 +579,25 @@ mod tests {
             "return a",
             vec![Token::Return, Token::Identifier("a".to_string())],
         );
+        assert_lex_eq("\n\n\n\n", vec![]);
+        assert_lex_eq(
+            "def foo(a: int):\n\tb = 0\n",
+            vec![
+                Token::Def,
+                Token::Identifier("foo".to_string()),
+                Token::OpenParen,
+                Token::Identifier("a".to_string()),
+                Token::Colon,
+                Token::Identifier("int".to_string()),
+                Token::CloseParen,
+                Token::Colon,
+                Token::Newline,
+                Token::Indent,
+                Token::Identifier("b".to_string()),
+                Token::Assign,
+                Token::Integer(0),
+                Token::Newline,
+            ],
+        )
     }
 }
