@@ -722,12 +722,20 @@ pub enum ParseError {
     UnexpectedToken(Token),
     EmptyBlock,
 }
-impl std::fmt::Display for ParseError {
+
+
+#[derive(Debug, Clone)]
+pub struct AnnotatedParseError {
+    begin: usize,
+    end: usize,
+    error: ParseError
+}
+impl std::fmt::Display for AnnotatedParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{:?} at [{}, {}]", self.error, self.begin, self.end)
     }
 }
-impl std::error::Error for ParseError {
+impl std::error::Error for AnnotatedParseError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         None
     }
@@ -735,13 +743,6 @@ impl std::error::Error for ParseError {
     fn cause(&self) -> Option<&dyn std::error::Error> {
         self.source()
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct AnnotatedParseError {
-    begin: usize,
-    end: usize,
-    error: ParseError
 }
 
 #[cfg(test)]

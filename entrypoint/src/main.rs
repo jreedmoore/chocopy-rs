@@ -1,7 +1,7 @@
 use std::fs;
 
-use parser::lexer::Lexer;
-use parser::parser::Parser;
+use front::lexer::Lexer;
+use front::parser::Parser;
 
 fn main() {
     let args = std::env::args().collect::<Vec<_>>();

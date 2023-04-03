@@ -1,7 +1,7 @@
 use std::{error::Error, fs};
 
-use parser::lexer;
-use parser::parser::Parser;
+use front::lexer;
+use front::parser::Parser;
 
 #[test]
 fn test_lexer_on_examples() -> Result<(), Box<dyn Error>> {
