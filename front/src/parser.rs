@@ -48,12 +48,12 @@ impl<'a> Parser<'a> {
         self.errors.push(ann);
     }
 
-    fn consume(&mut self, expected: Token) -> Option<()> {
+    fn consume(&mut self, expected: Token, during: &'static str) -> Option<()> {
         if let Some(token) = self.advance() {
             if token == expected {
                 return Some(());
             }
-            self.error(ParseError::UnexpectedToken(token))
+            self.error(ParseError::UnexpectedToken { token, expected: Some(expected), during })
         }
         None
     }
@@ -179,17 +179,17 @@ impl<'a> Parser<'a> {
     }
 
     fn class_def(&mut self) -> Option<ast::ClassDef> {
-        self.consume(Token::Class)?;
+        self.consume(Token::Class, "class def")?;
         let id = self.identifier()?;
-        self.consume(Token::OpenParen);
+        self.consume(Token::OpenParen, "class parent");
         let parent = self.identifier()?;
-        self.consume(Token::CloseParen)?;
-        self.consume(Token::Colon)?;
-        self.consume(Token::Newline)?;
-        self.consume(Token::Indent)?;
+        self.consume(Token::CloseParen, "class parent")?;
+        self.consume(Token::Colon, "class header")?;
+        self.consume(Token::Newline, "class header")?;
+        self.consume(Token::Indent, "class body")?;
         if self.check(Token::Pass) {
-            self.consume(Token::Pass)?;
-            self.consume(Token::Newline)?;
+            self.consume(Token::Pass, "class body pass")?;
+            self.consume(Token::Newline, "class body pass")?;
             Some(ast::ClassDef {
                 id,
                 parent,
@@ -210,7 +210,7 @@ impl<'a> Parser<'a> {
                 // TODO: not sure how ? early escape error recovery will work
                 vars.push(self.variable_def()?);
             }
-            self.consume(Token::Dedent)?;
+            self.consume(Token::Dedent, "class body")?;
             Some(ast::ClassDef {
                 id,
                 parent,
@@ -221,9 +221,9 @@ impl<'a> Parser<'a> {
     }
 
     fn function_def(&mut self) -> Option<ast::FunctionDef> {
-        self.consume(Token::Def)?;
+        self.consume(Token::Def, "fun def")?;
         let id = self.identifier()?;
-        self.consume(Token::OpenParen)?;
+        self.consume(Token::OpenParen, "fun def param")?;
         let mut params = vec![];
         loop {
             if self.is_identifier() {
@@ -235,15 +235,15 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        self.consume(Token::CloseParen);
+        self.consume(Token::CloseParen, "fun def param");
         let mut return_type = None;
         if self.check(Token::Arrow) {
             self.advance()?;
             return_type = Some(self.type_rule()?);
         }
-        self.consume(Token::Colon);
-        self.consume(Token::Newline);
-        self.consume(Token::Indent);
+        self.consume(Token::Colon, "fun header");
+        self.consume(Token::Newline, "fun header");
+        self.consume(Token::Indent, "fun body");
         let mut decls = vec![];
         let mut vars = vec![];
         let mut funcs = vec![];
@@ -284,7 +284,7 @@ impl<'a> Parser<'a> {
 
     fn variable_def(&mut self) -> Option<ast::VariableDef> {
         let var = self.typed_var()?;
-        self.consume(Token::Colon)?;
+        self.consume(Token::Colon, "var type")?;
         let literal = self.literal()?;
         Some(ast::VariableDef { var, literal })
     }
@@ -293,7 +293,7 @@ impl<'a> Parser<'a> {
         match self.peek()? {
             Token::Pass => {
                 self.advance()?;
-                self.consume(Token::Newline)?;
+                self.consume(Token::Newline, "pass stmt")?;
                 Some(ast::Statement::Pass)
             }
             Token::Return => {
@@ -330,9 +330,9 @@ impl<'a> Parser<'a> {
             Token::For => {
                 self.advance()?;
                 let id = self.identifier()?;
-                self.consume(Token::In)?;
+                self.consume(Token::In, "for in")?;
                 let in_expr = self.expression()?;
-                self.consume(Token::Colon);
+                self.consume(Token::Colon, "for header");
                 let block = self.block()?;
                 Some(ast::Statement::For { id, in_expr, block })
             }
@@ -346,7 +346,7 @@ impl<'a> Parser<'a> {
                         if !self.check(Token::Assign) {
                             break
                         }
-                        self.consume(Token::Assign)?;
+                        self.consume(Token::Assign, "assign stmt")?;
                         let e = self.expression()?;
                         exprs.push(e);
                     }
@@ -359,18 +359,18 @@ impl<'a> Parser<'a> {
 
     fn cond_block(&mut self) -> Option<ast::ConditionalBlock> {
         let condition = self.expression()?;
-        self.consume(Token::Colon);
+        self.consume(Token::Colon, "cond block");
         let then = self.block()?;
         Some(ast::ConditionalBlock { condition, then })
     }
     fn block(&mut self) -> Option<Vec<ast::Statement>> {
-        self.consume(Token::Newline)?;
-        self.consume(Token::Indent)?;
+        self.consume(Token::Newline, "block")?;
+        self.consume(Token::Indent, "block")?;
         let mut stmts = vec![];
         while !self.check(Token::Dedent) {
             stmts.push(self.statement()?)
         }
-        self.consume(Token::Dedent)?;
+        self.consume(Token::Dedent, "block")?;
         if stmts.is_empty() {
             self.error(ParseError::EmptyBlock);
             None
@@ -398,7 +398,7 @@ impl<'a> Parser<'a> {
 
     fn typed_var(&mut self) -> Option<ast::TypedVar> {
         let id = self.identifier()?;
-        self.consume(Token::Colon)?;
+        self.consume(Token::Colon, "typed_var")?;
         let type_name = self.type_rule()?;
         Some(ast::TypedVar { id, typ: type_name })
     }
@@ -447,7 +447,7 @@ impl<'a> Parser<'a> {
             self.exprs.push(prefix);
         } else {
             self.advance();
-            self.error(ParseError::UnexpectedToken(prefix_token));
+            self.error(ParseError::unexpected_token(prefix_token, "expr prefix"));
             return None;
         }
 
@@ -482,7 +482,7 @@ impl<'a> Parser<'a> {
             Token::And => ast::LogicalBinOp::And,
             Token::Or => ast::LogicalBinOp::Or,
             t => {
-                self.error(ParseError::UnexpectedToken(t));
+                self.error(ParseError::unexpected_token(t, "logical infix"));
                 return None;
             }
         };
@@ -496,9 +496,9 @@ impl<'a> Parser<'a> {
     }
 
     fn logical_ternary(&mut self, min_bp: usize) -> Option<ast::Expression> {
-        self.consume(Token::If)?;
+        self.consume(Token::If, "ternary")?;
         let mhs = self.expression_bp(0)?;
-        self.consume(Token::Else)?;
+        self.consume(Token::Else, "ternary")?;
         let rhs = self.expression_bp(min_bp)?;
         let lhs = self.exprs.pop()?;
         Some(ast::Expression::Ternary {
@@ -511,8 +511,8 @@ impl<'a> Parser<'a> {
     fn logical_prefix(&mut self, min_bp: usize) -> Option<ast::Expression> {
         match self.advance()? {
             Token::Not => Some(ast::Expression::Not(Box::new(self.expression_bp(min_bp)?))),
-            t => {
-                self.error(ParseError::UnexpectedToken(t));
+            token => {
+                self.error(ParseError::unexpected_token(token, "logical prefix"));
                 None
             }
         }
@@ -561,7 +561,7 @@ impl<'a> Parser<'a> {
     fn grouping(&mut self, _min_bp: usize) -> Option<ast::Expression> {
         self.advance();
         let e = self.expression_bp(0)?;
-        self.consume(Token::CloseParen);
+        self.consume(Token::CloseParen, "grouping");
         Some(e)
     }
 
@@ -576,13 +576,13 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        self.consume(Token::CloseBracket)?;
+        self.consume(Token::CloseBracket, "list literal")?;
         return Some(ast::Expression::ListLiteral(es));
     }
 
     fn exp_error(&mut self, _min_bp: usize) -> Option<ast::Expression> {
-        let tok = self.advance()?;
-        self.error(ParseError::UnexpectedToken(tok));
+        let token = self.advance()?;
+        self.error(ParseError::unexpected_token(token, "exp error"));
         None
     }
 
@@ -618,7 +618,7 @@ impl<'a> Parser<'a> {
             Token::OpenBracket => {
                 let rhs = self.expression_bp(min_bp)?;
                 let lhs = self.exprs.pop()?;
-                self.consume(Token::CloseBracket)?;
+                self.consume(Token::CloseBracket, "index")?;
                 Some(ast::Expression::Index(ast::IndexExpression {
                     expr: Box::new(lhs),
                     index: Box::new(rhs),
@@ -637,7 +637,7 @@ impl<'a> Parser<'a> {
     }
 
     fn call_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
-        self.consume(Token::OpenParen)?;
+        self.consume(Token::OpenParen, "call")?;
         println!("call_exp {:?}", self.exprs);
         let lhs = self.exprs.pop()?;
         let mut args = vec![];
@@ -649,7 +649,7 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        self.consume(Token::CloseParen)?;
+        self.consume(Token::CloseParen, "call")?;
         Some(match lhs {
             ast::Expression::Member(m) => ast::Expression::MemberCall(m, args),
             ast::Expression::Id(id) => ast::Expression::Call(id, args),
@@ -658,7 +658,7 @@ impl<'a> Parser<'a> {
     }
 
     fn unary_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
-        self.consume(Token::Minus)?;
+        self.consume(Token::Minus, "unary minus")?;
         let e = self.expression_bp(min_bp)?;
         Some(ast::Expression::UnaryMinus(Box::new(e)))
     }
@@ -752,9 +752,14 @@ impl BindingPower {
 pub enum ParseError {
     LexError(lexer::LexError),
     UnexpectedEof,
-    UnexpectedToken(Token),
+    UnexpectedToken { token: Token, expected: Option<Token>, during: &'static str },
     EmptyBlock,
     UnexpectedExprInTargetPosition,
+}
+impl ParseError {
+    fn unexpected_token(token: Token, during: &'static str) -> ParseError {
+        ParseError::UnexpectedToken { token,  expected: None, during }
+    }
 }
 
 
