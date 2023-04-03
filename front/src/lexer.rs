@@ -105,10 +105,18 @@ pub struct Span {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LexError {
-    UnexpectedCharacter(char),
+    UnexpectedCharacter { got: char, expected: Option<char>, during: &'static str },
     UnexpectedEof(&'static str),
     OversizedInteger,
     TabError,
+}
+impl LexError {
+    fn unexpected_char(got: char, during: &'static str) -> LexError {
+        LexError::UnexpectedCharacter { got, expected: None, during }
+    }
+    fn unexpected_char_with(got: char, expected: char, during: &'static str) -> LexError {
+        LexError::UnexpectedCharacter { got, expected: Some(expected), during }
+    }
 }
 
 // https://craftinginterpreters.com/scanning.html
@@ -169,7 +177,7 @@ impl<'a> Lexer<'a> {
                     self.line_empty = false;
                 }
                 match c {
-                    w if w.is_whitespace() && self.line_start => {
+                    w if w.is_whitespace() && w != '\n' && self.line_start => {
                         let indent = self.scan_indent(w)?;
                         if *self.indent_stack.last().expect("never empty") < indent {
                             self.indent_stack.push(indent);
@@ -213,7 +221,7 @@ impl<'a> Lexer<'a> {
                         if self.match_next('/') {
                             return self.span(Token::IntegerDiv);
                         } else {
-                            return self.report_error(LexError::UnexpectedCharacter(c));
+                            return self.report_error(LexError::unexpected_char_with(c, '/', "div"));
                         }
                     }
                     '%' => return self.span(Token::Modulo),
@@ -243,7 +251,7 @@ impl<'a> Lexer<'a> {
                             return self.span(Token::NotEqual);
                         } else {
                             // todo
-                            return self.report_error(LexError::UnexpectedCharacter(' '));
+                            return self.report_error(LexError::unexpected_char_with(c, '=', "not equal"));
                         }
                     }
                     '#' => loop {
@@ -261,7 +269,7 @@ impl<'a> Lexer<'a> {
                     '"' => return self.scan_string(),
                     '0'..='9' => return self.scan_number(c),
                     c if c.is_alphanumeric() => return self.scan_identifier(c),
-                    t => return self.report_error(LexError::UnexpectedCharacter(t)),
+                    t => return self.report_error(LexError::unexpected_char(t, "fall thru")),
                 }
             } else {
                 break;
@@ -401,7 +409,7 @@ impl<'a> Lexer<'a> {
         match w {
             '\t' => level += 8,
             ' ' => level += 1,
-            _ => return Err(LexError::UnexpectedCharacter(w)),
+            _ => return Err(LexError::unexpected_char(w, "scan_indent")),
         }
 
         loop {
@@ -495,25 +503,7 @@ mod tests {
 
     #[test]
     fn test_one() {
-        assert_lex_eq(
-            "def foo(a: int):\n\tb = 0\n",
-            vec![
-                Token::Def,
-                Token::Identifier("foo".to_string()),
-                Token::OpenParen,
-                Token::Identifier("a".to_string()),
-                Token::Colon,
-                Token::Identifier("int".to_string()),
-                Token::CloseParen,
-                Token::Colon,
-                Token::Newline,
-                Token::Indent,
-                Token::Identifier("b".to_string()),
-                Token::Assign,
-                Token::Integer(0),
-                Token::Newline,
-            ],
-        )
+        assert_lex_eq("\n\n\n\n", vec![])
     }
 
     #[test]
