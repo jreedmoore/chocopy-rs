@@ -26,7 +26,7 @@ impl<'a> Parser<'a> {
             errors: vec![],
             exprs: vec![],
         }
-   }
+    }
 
     /// Main entry point
     pub fn parse(&mut self) -> Result<ast::Program, AnnotatedParseError> {
@@ -41,9 +41,17 @@ impl<'a> Parser<'a> {
     fn error(&mut self, error: ParseError) {
         println!("emitting error {:?}", error);
         let ann = if let Some(span) = &self.current {
-            AnnotatedParseError { begin: span.start.offset, end: span.end.offset, error: error }
+            AnnotatedParseError {
+                begin: span.start.offset,
+                end: span.end.offset,
+                error: error,
+            }
         } else {
-            AnnotatedParseError { begin: 0, end: 0, error: error }
+            AnnotatedParseError {
+                begin: 0,
+                end: 0,
+                error: error,
+            }
         };
         self.errors.push(ann);
     }
@@ -53,7 +61,11 @@ impl<'a> Parser<'a> {
             if token == expected {
                 return Some(());
             }
-            self.error(ParseError::UnexpectedToken { token, expected: Some(expected), during })
+            self.error(ParseError::UnexpectedToken {
+                token,
+                expected: Some(expected),
+                during,
+            })
         }
         None
     }
@@ -344,14 +356,17 @@ impl<'a> Parser<'a> {
                     let mut exprs = vec![e];
                     loop {
                         if !self.check(Token::Assign) {
-                            break
+                            break;
                         }
                         self.consume(Token::Assign, "assign stmt")?;
                         let e = self.expression()?;
                         exprs.push(e);
                     }
                     let rhs = exprs.pop()?;
-                    Some(ast::Statement::Assign { targets: self.expr_to_target(exprs)?, expr: rhs })
+                    Some(ast::Statement::Assign {
+                        targets: self.expr_to_target(exprs)?,
+                        expr: rhs,
+                    })
                 }
             }
         }
@@ -415,7 +430,7 @@ impl<'a> Parser<'a> {
             Token::OpenBracket => {
                 self.advance();
                 Some(ast::Type::List(Box::new(self.type_rule()?)))
-            },
+            }
             _ => return None,
         };
         self.advance();
@@ -531,7 +546,9 @@ impl<'a> Parser<'a> {
             | Token::String(_)
             | Token::IdString(_) => ParseRule::prefix(Parser::literal_exp, 0),
             Token::OpenParen => ParseRule::both(Parser::grouping, 0, Parser::call_exp, 20, 21),
-            Token::OpenBracket => ParseRule::both(Parser::list_literal_exp, 0, Parser::access_exp, 22, 23),
+            Token::OpenBracket => {
+                ParseRule::both(Parser::list_literal_exp, 0, Parser::access_exp, 22, 23)
+            }
             Token::Equal
             | Token::NotEqual
             | Token::LessThan
@@ -653,7 +670,7 @@ impl<'a> Parser<'a> {
         Some(match lhs {
             ast::Expression::Member(m) => ast::Expression::MemberCall(m, args),
             ast::Expression::Id(id) => ast::Expression::Call(id, args),
-            t => panic!("Unexpected lhs in call {:?}", t)
+            t => panic!("Unexpected lhs in call {:?}", t),
         })
     }
 
@@ -672,7 +689,7 @@ impl<'a> Parser<'a> {
                 ast::Expression::Index(idx) => targets.push(ast::Target::Index(idx)),
                 t => {
                     self.error(ParseError::UnexpectedExprInTargetPosition);
-                    return None
+                    return None;
                 }
             }
         }
@@ -752,22 +769,29 @@ impl BindingPower {
 pub enum ParseError {
     LexError(lexer::LexError),
     UnexpectedEof,
-    UnexpectedToken { token: Token, expected: Option<Token>, during: &'static str },
+    UnexpectedToken {
+        token: Token,
+        expected: Option<Token>,
+        during: &'static str,
+    },
     EmptyBlock,
     UnexpectedExprInTargetPosition,
 }
 impl ParseError {
     fn unexpected_token(token: Token, during: &'static str) -> ParseError {
-        ParseError::UnexpectedToken { token,  expected: None, during }
+        ParseError::UnexpectedToken {
+            token,
+            expected: None,
+            during,
+        }
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct AnnotatedParseError {
     begin: usize,
     end: usize,
-    error: ParseError
+    error: ParseError,
 }
 impl std::fmt::Display for AnnotatedParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

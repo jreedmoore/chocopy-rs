@@ -547,7 +547,10 @@ mod tests {
         assert_lex_eq("()", vec![Token::OpenParen, Token::CloseParen]);
         assert_lex_eq("# blah blah", vec![]);
         assert_lex_eq("# blah blah\n", vec![]);
-        assert_lex_eq("1234 # blah blah\n", vec![Token::Integer(1234), Token::Newline]);
+        assert_lex_eq(
+            "1234 # blah blah\n",
+            vec![Token::Integer(1234), Token::Newline],
+        );
         assert_lex_eq(
             r#""hello world""#,
             vec![Token::String("hello world".to_string())],

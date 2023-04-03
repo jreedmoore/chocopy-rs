@@ -1,41 +1,72 @@
-use front::ast::{self, Expression, Literal, BinOp};
+use front::ast::{self, BinOp, Expression, Literal};
 
 fn interp_exp(e: &Expression) -> ChocoVal {
     match e {
         Expression::Lit(Literal::Integer(i)) => ChocoVal::Int(*i),
         Expression::Lit(Literal::True) => ChocoVal::Bool(true),
         Expression::Lit(Literal::False) => ChocoVal::Bool(false),
-        Expression::BinaryOp(BinOp::Plus, l, r) => ChocoVal::Int(eval_num_binop(l, r, |l,r| l + r)),
-        Expression::BinaryOp(BinOp::Multiply, l, r) => ChocoVal::Int(eval_num_binop(l, r, |l,r| l * r)),
-        Expression::BinaryOp(BinOp::IntegerDiv, l, r) => ChocoVal::Int(eval_num_binop(l, r, |l,r| l / r)),
-        Expression::BinaryOp(BinOp::Modulo, l, r) => ChocoVal::Int(eval_num_binop(l, r, |l,r| l % r)),
-        Expression::BinaryOp(BinOp::GreaterThan, l, r) => ChocoVal::Bool(eval_num_compare(l, r, |l,r| l > r)),
-        Expression::BinaryOp(BinOp::LessThan, l, r) => ChocoVal::Bool(eval_num_compare(l, r, |l,r| l < r)),
-        Expression::BinaryOp(BinOp::GreaterThanEqual, l, r) => ChocoVal::Bool(eval_num_compare(l, r, |l,r| l >= r)),
-        Expression::BinaryOp(BinOp::LessThanEqual, l, r) => ChocoVal::Bool(eval_num_compare(l, r, |l,r| l <= r)),
-        Expression::BinaryOp(BinOp::Equals, l, r) => ChocoVal::Bool(eval_num_compare(l, r, |l,r| l == r)),
-        Expression::BinaryOp(BinOp::NotEquals, l, r) => ChocoVal::Bool(eval_num_compare(l, r, |l,r| l != r)),
-        Expression::LogicalBinaryOp(ast::LogicalBinOp::And, l, r) => ChocoVal::Bool(expect_bool(interp_exp(l)) && expect_bool(interp_exp(r))),
-        Expression::LogicalBinaryOp(ast::LogicalBinOp::Or, l, r) => ChocoVal::Bool(expect_bool(interp_exp(l)) || expect_bool(interp_exp(r))),
+        Expression::BinaryOp(BinOp::Plus, l, r) => {
+            ChocoVal::Int(eval_num_binop(l, r, |l, r| l + r))
+        }
+        Expression::BinaryOp(BinOp::Multiply, l, r) => {
+            ChocoVal::Int(eval_num_binop(l, r, |l, r| l * r))
+        }
+        Expression::BinaryOp(BinOp::IntegerDiv, l, r) => {
+            ChocoVal::Int(eval_num_binop(l, r, |l, r| l / r))
+        }
+        Expression::BinaryOp(BinOp::Modulo, l, r) => {
+            ChocoVal::Int(eval_num_binop(l, r, |l, r| l % r))
+        }
+        Expression::BinaryOp(BinOp::GreaterThan, l, r) => {
+            ChocoVal::Bool(eval_num_compare(l, r, |l, r| l > r))
+        }
+        Expression::BinaryOp(BinOp::LessThan, l, r) => {
+            ChocoVal::Bool(eval_num_compare(l, r, |l, r| l < r))
+        }
+        Expression::BinaryOp(BinOp::GreaterThanEqual, l, r) => {
+            ChocoVal::Bool(eval_num_compare(l, r, |l, r| l >= r))
+        }
+        Expression::BinaryOp(BinOp::LessThanEqual, l, r) => {
+            ChocoVal::Bool(eval_num_compare(l, r, |l, r| l <= r))
+        }
+        Expression::BinaryOp(BinOp::Equals, l, r) => {
+            ChocoVal::Bool(eval_num_compare(l, r, |l, r| l == r))
+        }
+        Expression::BinaryOp(BinOp::NotEquals, l, r) => {
+            ChocoVal::Bool(eval_num_compare(l, r, |l, r| l != r))
+        }
+        Expression::LogicalBinaryOp(ast::LogicalBinOp::And, l, r) => {
+            ChocoVal::Bool(expect_bool(interp_exp(l)) && expect_bool(interp_exp(r)))
+        }
+        Expression::LogicalBinaryOp(ast::LogicalBinOp::Or, l, r) => {
+            ChocoVal::Bool(expect_bool(interp_exp(l)) || expect_bool(interp_exp(r)))
+        }
         Expression::Not(e) => ChocoVal::Bool(!expect_bool(interp_exp(e))),
-        Expression::Ternary { e, if_expr, else_expr } => 
+        Expression::Ternary {
+            e,
+            if_expr,
+            else_expr,
+        } => {
             if expect_bool(interp_exp(if_expr)) {
                 interp_exp(e)
             } else {
                 interp_exp(else_expr)
             }
-        _ => todo!()
+        }
+        _ => todo!(),
     }
 }
 
-fn eval_num_binop<F>(l: &Expression, r: &Expression, f: F) -> i32 
-    where F: Fn(i32, i32) -> i32
+fn eval_num_binop<F>(l: &Expression, r: &Expression, f: F) -> i32
+where
+    F: Fn(i32, i32) -> i32,
 {
     f(expect_int(interp_exp(l)), expect_int(interp_exp(r)))
 }
 
-fn eval_num_compare<F>(l: &Expression, r: &Expression, f: F) -> bool 
-    where F: Fn(i32, i32) -> bool
+fn eval_num_compare<F>(l: &Expression, r: &Expression, f: F) -> bool
+where
+    F: Fn(i32, i32) -> bool,
 {
     f(expect_int(interp_exp(l)), expect_int(interp_exp(r)))
 }
@@ -43,31 +74,33 @@ fn eval_num_compare<F>(l: &Expression, r: &Expression, f: F) -> bool
 fn expect_int(v: ChocoVal) -> i32 {
     match v {
         ChocoVal::Int(i) => i,
-        _ => panic!("wrong type, expected Int")
+        _ => panic!("wrong type, expected Int"),
     }
 }
 
 fn expect_bool(v: ChocoVal) -> bool {
     match v {
         ChocoVal::Bool(b) => b,
-        _ => panic!("wrong type, expected Bool")
+        _ => panic!("wrong type, expected Bool"),
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChocoVal {
     Int(i32),
-    Bool(bool)
+    Bool(bool),
 }
 
 #[cfg(test)]
 mod tests {
-    use front::{lexer, parser, ast};
+    use front::{ast, lexer, parser};
 
     use super::{interp_exp, ChocoVal};
 
     fn parse_and_interp(input: &str) -> ChocoVal {
-        let prog = parser::Parser::new(lexer::Lexer::new(input)).parse().expect("valid program");
+        let prog = parser::Parser::new(lexer::Lexer::new(input))
+            .parse()
+            .expect("valid program");
         if let Some(ast::Statement::Expr(e)) = prog.stmts.first() {
             interp_exp(e)
         } else {
