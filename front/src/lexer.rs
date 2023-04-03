@@ -169,15 +169,23 @@ impl<'a> Lexer<'a> {
 
     pub(crate) fn scan(&mut self) -> Result<Span, LexError> {
         loop {
-            if let Some(c) = self.advance() {
+            if let Some(c) = self.peek() {
                 if !c.is_whitespace() && self.line_start {
+                    // only hit this if first character is non whitespace
                     self.line_start = false;
+                    let dedent = self.indent_stack.len() > 1;
+                    self.indent_stack.truncate(1);
+                    if dedent {
+                        return self.span(Token::Dedent);
+                    }
                 }
+            }
+            if let Some(c) = self.advance() {
                 if !c.is_whitespace() && c != '#' {
                     self.line_empty = false;
                 }
                 match c {
-                    w if w.is_whitespace() && w != '\n' && self.line_start => {
+                    w if w.is_whitespace() && w != '\n' && w != '\r' && self.line_start => {
                         let indent = self.scan_indent(w)?;
                         if *self.indent_stack.last().expect("never empty") < indent {
                             self.indent_stack.push(indent);
@@ -185,7 +193,7 @@ impl<'a> Lexer<'a> {
                         } else if let Some(idx) =
                             self.indent_stack.iter().position(|l| *l == indent)
                         {
-                            if idx == self.indent_stack.len() - 1 {
+                            if idx == self.indent_stack.len() - 1 && idx != 0 {
                                 continue;
                             }
                             self.indent_stack.truncate(idx);
@@ -194,11 +202,21 @@ impl<'a> Lexer<'a> {
                             return self.report_error(LexError::TabError);
                         }
                     }
-                    '\n' => {
+                    '\n' | '\r' => {
+                        if c == '\r' {
+                            let cc = self.advance();
+                            if let Some(cc) = cc {
+                                if cc != '\n' {
+                                    return self.report_error(LexError::unexpected_char_with(cc, '\n', "eol"));
+                                }
+                            }
+                        }
                         self.line_start = true;
                         if !self.line_empty {
                             self.line_empty = true;
                             return self.span(Token::Newline);
+                        } else {
+                            self.indent_stack.truncate(1);
                         }
                         self.line_empty = true;
                     }
@@ -414,6 +432,7 @@ impl<'a> Lexer<'a> {
             ' ' => level += 1,
             _ => return Err(LexError::unexpected_char(w, "scan_indent")),
         }
+        self.line_start = false;
 
         loop {
             if let Some(c) = self.peek() {
@@ -506,7 +525,7 @@ mod tests {
 
     #[test]
     fn test_one() {
-        assert_lex_eq("def foo():\n  i:int = 0\n  i = 1", vec![])
+        assert_lex_eq("if True:\n  False\nelse:\n  True", vec![])
     }
 
     #[test]

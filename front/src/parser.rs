@@ -39,7 +39,6 @@ impl<'a> Parser<'a> {
     }
 
     fn error(&mut self, error: ParseError) {
-        println!("emitting error {:?}", error);
         let ann = if let Some(span) = &self.current {
             AnnotatedParseError {
                 begin: span.start.offset,
@@ -57,7 +56,7 @@ impl<'a> Parser<'a> {
     }
 
     fn consume(&mut self, expected: Token, during: &'static str) -> Option<()> {
-        if let Some(token) = self.advance() {
+        if let Some(token) = self.advance(during) {
             if token == expected {
                 return Some(());
             }
@@ -68,6 +67,42 @@ impl<'a> Parser<'a> {
             })
         }
         None
+    }
+
+    fn consume_or_eof(&mut self, expected: Token, during: &'static str) -> Option<()> {
+        if let Some(_) = self.peek() {
+            let token = self.advance(during)?;
+            if token == expected {
+                return Some(());
+            } else {
+                self.error(ParseError::UnexpectedToken {
+                    token,
+                    expected: Some(expected),
+                    during,
+                });
+                None
+            }
+        } else {
+            Some(())
+        }
+    }
+
+    fn eol_or_eof(&mut self, during: &'static str) -> Option<()> {
+        if let Some(_) = self.peek() {
+            let token = self.advance(during)?;
+            if token == Token::Newline {
+                Some(())
+            } else {
+                self.error(ParseError::UnexpectedToken {
+                    token: token,
+                    expected: Some(Token::Newline),
+                    during,
+                });
+                None
+            }
+        } else {
+            Some(())
+        }
     }
 
     // Get next valid Span, ignoring errors
@@ -86,18 +121,16 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn advance(&mut self) -> Option<Token> {
+    fn advance(&mut self, during: &'static str) -> Option<Token> {
         if let Some(span) = self.peek.pop_front() {
             self.current = Some(span.clone());
-            println!("advance lexer {:?}", span.token);
             Some(span.token)
         } else {
             if let Some(span) = self.get_next() {
                 self.current = Some(span.clone());
-                println!("advance peek {:?}", span.token);
                 Some(span.token)
             } else {
-                self.error(ParseError::UnexpectedEof);
+                self.error(ParseError::UnexpectedEof(during));
                 None
             }
         }
@@ -201,7 +234,7 @@ impl<'a> Parser<'a> {
         self.consume(Token::Indent, "class body")?;
         if self.check(Token::Pass) {
             self.consume(Token::Pass, "class body pass")?;
-            self.consume(Token::Newline, "class body pass")?;
+            self.eol_or_eof("class body pass")?;
             Some(ast::ClassDef {
                 id,
                 parent,
@@ -213,7 +246,7 @@ impl<'a> Parser<'a> {
             let mut funcs = vec![];
             // first Dedent (not in a function def) ends the class
             while !self.check(Token::Dedent) {
-                self.advance()?;
+                self.advance("class defs")?;
                 // if we hit a def token we're defining a function
                 if self.check(Token::Def) {
                     funcs.push(self.function_def()?);
@@ -242,7 +275,7 @@ impl<'a> Parser<'a> {
                 params.push(self.typed_var()?)
             }
             if self.check(Token::Comma) {
-                self.advance()?;
+                self.advance("fun params")?;
             } else {
                 break;
             }
@@ -250,7 +283,7 @@ impl<'a> Parser<'a> {
         self.consume(Token::CloseParen, "fun def param");
         let mut return_type = None;
         if self.check(Token::Arrow) {
-            self.advance()?;
+            self.advance("fun return type")?;
             return_type = Some(self.type_rule()?);
         }
         self.consume(Token::Colon, "fun header");
@@ -267,11 +300,11 @@ impl<'a> Parser<'a> {
                 funcs.push(self.function_def()?);
             }
             if self.check(Token::Global) {
-                self.advance();
+                self.advance("global");
                 decls.push(ast::Declaration::Global(self.identifier()?))
             }
             if self.check(Token::NonLocal) {
-                self.advance();
+                self.advance("nonlocal");
                 decls.push(ast::Declaration::NonLocal(self.identifier()?))
             }
             break;
@@ -303,32 +336,33 @@ impl<'a> Parser<'a> {
     fn statement(&mut self) -> Option<ast::Statement> {
         match self.peek()? {
             Token::Pass => {
-                self.advance()?;
-                self.consume(Token::Newline, "pass stmt")?;
+                self.advance("pass")?;
+                self.eol_or_eof("pass stmt")?;
                 Some(ast::Statement::Pass)
             }
             Token::Return => {
-                self.advance()?;
-                if self.check(Token::Newline) {
-                    self.advance()?;
+                self.advance("return")?;
+                if self.check(Token::Newline) || self.eof() {
+                    self.advance("empty return")?;
                     Some(ast::Statement::Return(None))
                 } else {
                     let e = self.expression()?;
-                    self.consume(Token::Newline, "return")?;
+                    self.eol_or_eof("return")?;
                     Some(ast::Statement::Return(Some(e)))
                 }
             }
             Token::If => {
-                self.advance()?;
+                self.advance("if")?;
                 let main = self.cond_block()?;
                 let mut elifs = vec![];
                 while self.check(Token::Elif) {
-                    self.advance()?;
+                    self.advance("elif")?;
                     elifs.push(self.cond_block()?);
                 }
                 let mut otherwise = None;
                 if self.check(Token::Else) {
-                    self.advance()?;
+                    self.advance("else")?;
+                    self.consume(Token::Colon, "else")?;
                     otherwise = Some(self.block()?);
                 }
                 Some(ast::Statement::If {
@@ -338,11 +372,11 @@ impl<'a> Parser<'a> {
                 })
             }
             Token::While => {
-                self.advance()?;
+                self.advance("while")?;
                 Some(ast::Statement::While(self.cond_block()?))
             }
             Token::For => {
-                self.advance()?;
+                self.advance("for")?;
                 let id = self.identifier()?;
                 self.consume(Token::In, "for in")?;
                 let in_expr = self.expression()?;
@@ -353,7 +387,7 @@ impl<'a> Parser<'a> {
             _ => {
                 let e = self.expression()?;
                 if !self.check(Token::Assign) {
-                    self.consume(Token::Newline, "expr stmt")?;
+                    self.eol_or_eof("expr stmt")?;
                     Some(ast::Statement::Expr(e))
                 } else {
                     let mut exprs = vec![e];
@@ -366,7 +400,7 @@ impl<'a> Parser<'a> {
                         exprs.push(e);
                     }
                     let rhs = exprs.pop()?;
-                    self.consume(Token::Newline, "assign stmt")?;
+                    self.eol_or_eof("assign stmt")?;
                     Some(ast::Statement::Assign {
                         targets: self.expr_to_target(exprs)?,
                         expr: rhs,
@@ -386,10 +420,10 @@ impl<'a> Parser<'a> {
         self.consume(Token::Newline, "block")?;
         self.consume(Token::Indent, "block")?;
         let mut stmts = vec![];
-        while !self.check(Token::Dedent) {
+        while !self.check(Token::Dedent) && !self.eof() {
             stmts.push(self.statement()?)
         }
-        self.consume(Token::Dedent, "block")?;
+        self.consume_or_eof(Token::Dedent, "block")?;
         if stmts.is_empty() {
             self.error(ParseError::EmptyBlock);
             None
@@ -404,7 +438,7 @@ impl<'a> Parser<'a> {
 
     fn identifier(&mut self) -> Option<ast::Identifier> {
         if self.is_identifier() {
-            if let Some(Token::Identifier(id)) = self.advance() {
+            if let Some(Token::Identifier(id)) = self.advance("identifier") {
                 return Some(ast::Identifier { name: id });
             }
         }
@@ -432,17 +466,17 @@ impl<'a> Parser<'a> {
                 name: name.to_string(),
             })),
             Token::OpenBracket => {
-                self.advance();
+                self.advance("list type");
                 Some(ast::Type::List(Box::new(self.type_rule()?)))
             }
             _ => return None,
         };
-        self.advance();
+        self.advance("type rule");
         r
     }
 
     fn literal(&mut self) -> Option<ast::Literal> {
-        match self.advance()? {
+        match self.advance("literal")? {
             Token::None => Some(ast::Literal::None),
             Token::True => Some(ast::Literal::True),
             Token::False => Some(ast::Literal::False),
@@ -459,13 +493,12 @@ impl<'a> Parser<'a> {
 
     fn expression_bp(&mut self, min_bp: usize) -> Option<ast::Expression> {
         let prefix_token = self.peek()?.clone();
-        println!("e_bp token {:?} stack: {:?}", prefix_token, self.exprs);
         let prefix_rule = Parser::parse_table(&prefix_token);
         if let Some(pf) = prefix_rule.prefix {
             let prefix = (pf.f)(self, pf.power.right_bp())?;
             self.exprs.push(prefix);
         } else {
-            self.advance();
+            self.advance("expr prefix");
             self.error(ParseError::unexpected_token(prefix_token, "expr prefix"));
             return None;
         }
@@ -497,7 +530,7 @@ impl<'a> Parser<'a> {
     }
 
     fn logical_infix(&mut self, min_bp: usize) -> Option<ast::Expression> {
-        let bin_op = match self.advance()? {
+        let bin_op = match self.advance("infix")? {
             Token::And => ast::LogicalBinOp::And,
             Token::Or => ast::LogicalBinOp::Or,
             t => {
@@ -528,7 +561,7 @@ impl<'a> Parser<'a> {
     }
 
     fn logical_prefix(&mut self, min_bp: usize) -> Option<ast::Expression> {
-        match self.advance()? {
+        match self.advance("logical prefix")? {
             Token::Not => Some(ast::Expression::Not(Box::new(self.expression_bp(min_bp)?))),
             token => {
                 self.error(ParseError::unexpected_token(token, "logical prefix"));
@@ -580,19 +613,19 @@ impl<'a> Parser<'a> {
     }
 
     fn grouping(&mut self, _min_bp: usize) -> Option<ast::Expression> {
-        self.advance();
+        self.advance("grouping");
         let e = self.expression_bp(0)?;
         self.consume(Token::CloseParen, "grouping");
         Some(e)
     }
 
     fn list_literal_exp(&mut self, _min_bp: usize) -> Option<ast::Expression> {
-        self.advance();
+        self.advance("list literal");
         let mut es = vec![];
         loop {
             es.push(self.expression_bp(0)?);
             if self.check(Token::Comma) {
-                self.advance();
+                self.advance("list comma");
             } else {
                 break;
             }
@@ -602,13 +635,13 @@ impl<'a> Parser<'a> {
     }
 
     fn exp_error(&mut self, _min_bp: usize) -> Option<ast::Expression> {
-        let token = self.advance()?;
+        let token = self.advance("exp error")?;
         self.error(ParseError::unexpected_token(token, "exp error"));
         None
     }
 
     fn infix_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
-        let bin_op = match self.advance()? {
+        let bin_op = match self.advance("infix exp")? {
             Token::Equal => ast::BinOp::Equals,
             Token::NotEqual => ast::BinOp::NotEquals,
             Token::LessThan => ast::BinOp::LessThan,
@@ -634,7 +667,7 @@ impl<'a> Parser<'a> {
     }
 
     fn access_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
-        let token = self.advance()?;
+        let token = self.advance("access exp")?;
         match token {
             Token::OpenBracket => {
                 let rhs = self.expression_bp(min_bp)?;
@@ -659,13 +692,12 @@ impl<'a> Parser<'a> {
 
     fn call_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
         self.consume(Token::OpenParen, "call")?;
-        println!("call_exp {:?}", self.exprs);
         let lhs = self.exprs.pop()?;
         let mut args = vec![];
         loop {
             args.push(self.expression_bp(0)?);
             if self.check(Token::Comma) {
-                self.advance();
+                self.advance("call exp");
             } else {
                 break;
             }
@@ -772,7 +804,7 @@ impl BindingPower {
 #[derive(Debug, Clone)]
 pub enum ParseError {
     LexError(lexer::LexError),
-    UnexpectedEof,
+    UnexpectedEof(&'static str),
     UnexpectedToken {
         token: Token,
         expected: Option<Token>,
@@ -818,26 +850,25 @@ mod tests {
     use crate::lexer::Lexer;
 
     fn assert_parses(input: &str) {
-        println!("Parses: {}", input);
         let r = Parser::new(Lexer::new(input)).parse();
         match r {
             Err(e) => panic!("Failure in example {}: {:?}", input, e),
             Ok(p) if p.defs.is_empty() && p.stmts.is_empty() => {
                 panic!("Empty parse in example {}", input)
             }
-            Ok(a) => println!("{:?}", a),
+            Ok(_) => (),
         }
     }
 
     fn assert_fails(input: &str) {
-        println!("Fails: {}", input);
         let r = Parser::new(Lexer::new(input)).parse();
         assert!(r.is_err(), "Expected failure for {}", input);
     }
 
     #[test]
     fn test_one() {
-        assert_parses("a : int = 1");
+        //assert_parses("1")
+        assert_parses("if True:\n  True\nelse:\n  False");
         //assert_parses("a < len(b)");
         //assert_parses("1 + 2 * 3 + 4");
     }
@@ -869,5 +900,6 @@ mod tests {
         assert_parses("True == (not False)");
         assert_parses("a = 1");
         assert_parses("a:int = 1");
+        assert_parses("if True:\n  True\nelse:\n  False");
     }
 }
