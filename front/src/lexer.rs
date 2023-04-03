@@ -185,6 +185,9 @@ impl<'a> Lexer<'a> {
                         } else if let Some(idx) =
                             self.indent_stack.iter().position(|l| *l == indent)
                         {
+                            if idx == self.indent_stack.len() - 1 {
+                                continue;
+                            }
                             self.indent_stack.truncate(idx);
                             return self.span(Token::Dedent);
                         } else {
@@ -503,7 +506,7 @@ mod tests {
 
     #[test]
     fn test_one() {
-        assert_lex_eq("\n\n\n\n", vec![])
+        assert_lex_eq("def foo():\n  i:int = 0\n  i = 1", vec![])
     }
 
     #[test]

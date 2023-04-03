@@ -296,7 +296,6 @@ impl<'a> Parser<'a> {
 
     fn variable_def(&mut self) -> Option<ast::VariableDef> {
         let var = self.typed_var()?;
-        self.consume(Token::Colon, "var type")?;
         let literal = self.literal()?;
         Some(ast::VariableDef { var, literal })
     }
@@ -311,9 +310,12 @@ impl<'a> Parser<'a> {
             Token::Return => {
                 self.advance()?;
                 if self.check(Token::Newline) {
+                    self.advance()?;
                     Some(ast::Statement::Return(None))
                 } else {
-                    Some(ast::Statement::Return(Some(self.expression()?)))
+                    let e = self.expression()?;
+                    self.consume(Token::Newline, "return")?;
+                    Some(ast::Statement::Return(Some(e)))
                 }
             }
             Token::If => {
@@ -351,6 +353,7 @@ impl<'a> Parser<'a> {
             _ => {
                 let e = self.expression()?;
                 if !self.check(Token::Assign) {
+                    self.consume(Token::Newline, "expr stmt")?;
                     Some(ast::Statement::Expr(e))
                 } else {
                     let mut exprs = vec![e];
@@ -363,6 +366,7 @@ impl<'a> Parser<'a> {
                         exprs.push(e);
                     }
                     let rhs = exprs.pop()?;
+                    self.consume(Token::Newline, "assign stmt")?;
                     Some(ast::Statement::Assign {
                         targets: self.expr_to_target(exprs)?,
                         expr: rhs,
@@ -833,7 +837,7 @@ mod tests {
 
     #[test]
     fn test_one() {
-        assert_parses("a = 1");
+        assert_parses("a : int = 1");
         //assert_parses("a < len(b)");
         //assert_parses("1 + 2 * 3 + 4");
     }
@@ -864,5 +868,6 @@ mod tests {
         //assert_fails("True == not False");
         assert_parses("True == (not False)");
         assert_parses("a = 1");
+        assert_parses("a:int = 1");
     }
 }
