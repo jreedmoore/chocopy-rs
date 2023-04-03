@@ -26,7 +26,7 @@ impl<'a> Parser<'a> {
             errors: vec![],
             exprs: vec![],
         }
-    }
+   }
 
     /// Main entry point
     pub fn parse(&mut self) -> Result<ast::Program, AnnotatedParseError> {
@@ -336,7 +336,24 @@ impl<'a> Parser<'a> {
                 let block = self.block()?;
                 Some(ast::Statement::For { id, in_expr, block })
             }
-            _ => Some(ast::Statement::Expr(self.expression()?)),
+            _ => {
+                let e = self.expression()?;
+                if !self.check(Token::Assign) {
+                    Some(ast::Statement::Expr(e))
+                } else {
+                    let mut exprs = vec![e];
+                    loop {
+                        if !self.check(Token::Assign) {
+                            break
+                        }
+                        self.consume(Token::Assign)?;
+                        let e = self.expression()?;
+                        exprs.push(e);
+                    }
+                    let rhs = exprs.pop()?;
+                    Some(ast::Statement::Assign { targets: self.expr_to_target(exprs)?, expr: rhs })
+                }
+            }
         }
     }
 
@@ -645,6 +662,22 @@ impl<'a> Parser<'a> {
         let e = self.expression_bp(min_bp)?;
         Some(ast::Expression::UnaryMinus(Box::new(e)))
     }
+
+    fn expr_to_target(&mut self, exprs: Vec<ast::Expression>) -> Option<Vec<ast::Target>> {
+        let mut targets = vec![];
+        for e in exprs {
+            match e {
+                ast::Expression::Id(i) => targets.push(ast::Target::Id(i)),
+                ast::Expression::Member(m) => targets.push(ast::Target::Member(m)),
+                ast::Expression::Index(idx) => targets.push(ast::Target::Index(idx)),
+                t => {
+                    self.error(ParseError::UnexpectedExprInTargetPosition);
+                    return None
+                }
+            }
+        }
+        Some(targets)
+    }
 }
 
 type PF<'a, 'b> = fn(&'b mut Parser<'a>, usize) -> Option<ast::Expression>;
@@ -721,6 +754,7 @@ pub enum ParseError {
     UnexpectedEof,
     UnexpectedToken(Token),
     EmptyBlock,
+    UnexpectedExprInTargetPosition,
 }
 
 
@@ -770,7 +804,7 @@ mod tests {
 
     #[test]
     fn test_one() {
-        assert_parses("x == items[i]");
+        assert_parses("a = 1");
         //assert_parses("a < len(b)");
         //assert_parses("1 + 2 * 3 + 4");
     }
@@ -800,5 +834,6 @@ mod tests {
         assert_fails("(1))");
         //assert_fails("True == not False");
         assert_parses("True == (not False)");
+        assert_parses("a = 1");
     }
 }
