@@ -41,17 +41,18 @@ impl<'a> Parser<'a> {
     fn error(&mut self, error: ParseError) {
         let ann = if let Some(span) = &self.current {
             AnnotatedParseError {
-                begin: span.start.offset,
-                end: span.end.offset,
+                begin: span.start,
+                end: span.end,
                 error: error,
             }
         } else {
             AnnotatedParseError {
-                begin: 0,
-                end: 0,
+                begin: lexer::Location::default(),
+                end: lexer::Location::default(),
                 error: error,
             }
         };
+        println!("error {:?}", ann);
         self.errors.push(ann);
     }
 
@@ -124,10 +125,12 @@ impl<'a> Parser<'a> {
     fn advance(&mut self, during: &'static str) -> Option<Token> {
         if let Some(span) = self.peek.pop_front() {
             self.current = Some(span.clone());
+            println!("advance {:?}: {}", span.token, during);
             Some(span.token)
         } else {
             if let Some(span) = self.get_next() {
                 self.current = Some(span.clone());
+                println!("advance {:?}: {}", span.token, during);
                 Some(span.token)
             } else {
                 self.error(ParseError::UnexpectedEof(during));
@@ -245,8 +248,8 @@ impl<'a> Parser<'a> {
             let mut vars = vec![];
             let mut funcs = vec![];
             // first Dedent (not in a function def) ends the class
-            while !self.check(Token::Dedent) {
-                self.advance("class defs")?;
+            while !self.check(Token::Dedent) && !self.eof {
+                //self.advance("class defs")?;
                 // if we hit a def token we're defining a function
                 if self.check(Token::Def) {
                     funcs.push(self.function_def()?);
@@ -255,7 +258,7 @@ impl<'a> Parser<'a> {
                 // TODO: not sure how ? early escape error recovery will work
                 vars.push(self.variable_def()?);
             }
-            self.consume(Token::Dedent, "class body")?;
+            self.consume_or_eof(Token::Dedent, "class body")?;
             Some(ast::ClassDef {
                 id,
                 parent,
@@ -329,7 +332,9 @@ impl<'a> Parser<'a> {
 
     fn variable_def(&mut self) -> Option<ast::VariableDef> {
         let var = self.typed_var()?;
+        self.consume(Token::Assign, "variable def")?;
         let literal = self.literal()?;
+        self.eol_or_eof("variable def")?;
         Some(ast::VariableDef { var, literal })
     }
 
@@ -825,13 +830,13 @@ impl ParseError {
 
 #[derive(Debug, Clone)]
 pub struct AnnotatedParseError {
-    begin: usize,
-    end: usize,
+    begin: lexer::Location,
+    end: lexer::Location,
     error: ParseError,
 }
 impl std::fmt::Display for AnnotatedParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} at [{}, {}]", self.error, self.begin, self.end)
+        write!(f, "{:?} at [{:?}, {:?}]", self.error, self.begin, self.end)
     }
 }
 impl std::error::Error for AnnotatedParseError {
@@ -868,7 +873,7 @@ mod tests {
     #[test]
     fn test_one() {
         //assert_parses("1")
-        assert_parses("if True:\n  True\nelse:\n  False");
+        assert_parses("class Foo(object):\n  x:int=0\n  y:int=None");
         //assert_parses("a < len(b)");
         //assert_parses("1 + 2 * 3 + 4");
     }

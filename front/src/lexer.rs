@@ -84,15 +84,21 @@ impl Token {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Location {
-    pub offset: usize,
+    pub line: usize,
+    pub col: usize,
 }
 impl Location {
-    fn default() -> Location {
-        Location { offset: 0 }
+    pub fn default() -> Location {
+        Location { line: 1, col: 0 }
     }
 
-    fn inc(&mut self) {
-        self.offset += 1;
+    fn inc_col(&mut self) {
+        self.col += 1;
+    }
+
+    fn inc_line(&mut self) {
+        self.col = 0;
+        self.line += 1;
     }
 }
 
@@ -142,7 +148,7 @@ impl<'a> Lexer<'a> {
 
     fn advance(&mut self) -> Option<char> {
         if let Some(c) = self.chars.next() {
-            self.current.inc();
+            self.current.inc_col();
             Some(c)
         } else {
             None
@@ -153,7 +159,7 @@ impl<'a> Lexer<'a> {
         if let Some(c) = self.chars.peek() {
             if *c == expected {
                 self.chars.next();
-                self.current.inc();
+                self.current.inc_col();
                 true
             } else {
                 false
@@ -203,6 +209,7 @@ impl<'a> Lexer<'a> {
                         }
                     }
                     '\n' | '\r' => {
+                        self.current.inc_line();
                         if c == '\r' {
                             let cc = self.advance();
                             if let Some(cc) = cc {
