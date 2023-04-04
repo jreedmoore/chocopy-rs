@@ -111,18 +111,37 @@ pub struct Span {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LexError {
-    UnexpectedCharacter { got: char, expected: Option<char>, during: &'static str },
+    UnexpectedCharacter {
+        got: char,
+        expected: Option<char>,
+        during: &'static str,
+    },
     UnexpectedEof(&'static str),
     OversizedInteger,
     TabError,
 }
 impl LexError {
     fn unexpected_char(got: char, during: &'static str) -> LexError {
-        LexError::UnexpectedCharacter { got, expected: None, during }
+        LexError::UnexpectedCharacter {
+            got,
+            expected: None,
+            during,
+        }
     }
     fn unexpected_char_with(got: char, expected: char, during: &'static str) -> LexError {
-        LexError::UnexpectedCharacter { got, expected: Some(expected), during }
+        LexError::UnexpectedCharacter {
+            got,
+            expected: Some(expected),
+            during,
+        }
     }
+}
+
+#[derive(Debug, PartialEq)]
+enum LineState {
+    Start,
+    Indent(usize),
+    Logical,
 }
 
 // https://craftinginterpreters.com/scanning.html
@@ -130,8 +149,7 @@ pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
     start: Location,
     current: Location,
-    line_start: bool,
-    line_empty: bool,
+    line_state: LineState,
     indent_stack: Vec<usize>,
 }
 impl<'a> Lexer<'a> {
@@ -140,8 +158,7 @@ impl<'a> Lexer<'a> {
             chars: input.chars().peekable(),
             start: Location::default(),
             current: Location::default(),
-            line_start: true,
-            line_empty: true,
+            line_state: LineState::Start,
             indent_stack: vec![0],
         }
     }
@@ -176,23 +193,27 @@ impl<'a> Lexer<'a> {
     pub(crate) fn scan(&mut self) -> Result<Span, LexError> {
         loop {
             if let Some(c) = self.peek() {
-                if !c.is_whitespace() && self.line_start {
-                    // only hit this if first character is non whitespace
-                    self.line_start = false;
-                    let dedent = self.indent_stack.len() > 1;
-                    self.indent_stack.truncate(1);
-                    if dedent {
-                        return self.span(Token::Dedent);
+                let c = *c; // copy for the borrowck gods
+                            // line state machine
+                            // start transitions to Indent on whitespace, Logical on non-whitespace/non-comment
+                            // Indent emits on non-EOL
+                            // Logical transitions to Start on EOL
+                match self.line_state {
+                    LineState::Start if c.is_whitespace() => {
+                        self.line_state = LineState::Indent(self.scan_indent()?);
+                        continue;
                     }
-                }
-            }
-            if let Some(c) = self.advance() {
-                if !c.is_whitespace() && c != '#' {
-                    self.line_empty = false;
-                }
-                match c {
-                    w if w.is_whitespace() && w != '\n' && w != '\r' && self.line_start => {
-                        let indent = self.scan_indent(w)?;
+                    LineState::Start if c == '#' => (),
+                    LineState::Start => {
+                        self.line_state = LineState::Logical;
+                        let dedent = self.indent_stack.len() > 1;
+                        self.indent_stack.truncate(1);
+                        if dedent {
+                            return self.span(Token::Dedent);
+                        }
+                    }
+                    LineState::Indent(indent) if !c.is_whitespace() && c != '#' => {
+                        self.line_state = LineState::Logical;
                         if *self.indent_stack.last().expect("never empty") < indent {
                             self.indent_stack.push(indent);
                             return self.span(Token::Indent);
@@ -208,27 +229,33 @@ impl<'a> Lexer<'a> {
                             return self.report_error(LexError::TabError);
                         }
                     }
+                    LineState::Indent(_) => (),
+                    LineState::Logical => (),
+                }
+            }
+            if let Some(c) = self.advance() {
+                match c {
                     '\n' | '\r' => {
                         self.current.inc_line();
                         if c == '\r' {
-                            let cc = self.advance();
+                            let cc = self.peek();
                             if let Some(cc) = cc {
-                                if cc != '\n' {
-                                    return self.report_error(LexError::unexpected_char_with(cc, '\n', "eol"));
+                                if *cc == '\n' {
+                                    self.advance();
                                 }
                             }
                         }
-                        self.line_start = true;
-                        if !self.line_empty {
-                            self.line_empty = true;
-                            return self.span(Token::Newline);
-                        } else {
-                            self.indent_stack.truncate(1);
-                        }
-                        self.line_empty = true;
-                    }
-                    w if w.is_whitespace() && !self.line_start => continue,
 
+                        match self.line_state {
+                            LineState::Start => (),
+                            LineState::Indent(_) => self.line_state = LineState::Start,
+                            LineState::Logical => {
+                                self.line_state = LineState::Start;
+                                return self.span(Token::Newline);
+                            }
+                        }
+                    }
+                    w if w.is_whitespace() && self.line_state == LineState::Logical => continue,
                     '(' => return self.span(Token::OpenParen),
                     ')' => return self.span(Token::CloseParen),
                     '[' => return self.span(Token::OpenBracket),
@@ -249,7 +276,8 @@ impl<'a> Lexer<'a> {
                         if self.match_next('/') {
                             return self.span(Token::IntegerDiv);
                         } else {
-                            return self.report_error(LexError::unexpected_char_with(c, '/', "div"));
+                            return self
+                                .report_error(LexError::unexpected_char_with(c, '/', "div"));
                         }
                     }
                     '%' => return self.span(Token::Modulo),
@@ -279,7 +307,11 @@ impl<'a> Lexer<'a> {
                             return self.span(Token::NotEqual);
                         } else {
                             // todo
-                            return self.report_error(LexError::unexpected_char_with(c, '=', "not equal"));
+                            return self.report_error(LexError::unexpected_char_with(
+                                c,
+                                '=',
+                                "not equal",
+                            ));
                         }
                     }
                     '#' => loop {
@@ -296,10 +328,17 @@ impl<'a> Lexer<'a> {
                     },
                     '"' => return self.scan_string(),
                     '0'..='9' => return self.scan_number(c),
-                    c if c.is_alphanumeric() => return self.scan_identifier(c),
+                    c if c.is_alphanumeric() || c == '_' => return self.scan_identifier(c),
                     t => return self.report_error(LexError::unexpected_char(t, "fall thru")),
                 }
             } else {
+                // eof handling
+                if self.line_state == LineState::Logical {
+                    // eof is implicit new line
+                    self.line_state = LineState::Start;
+                    return self.span(Token::Newline);
+                }
+
                 break;
             }
         }
@@ -311,7 +350,7 @@ impl<'a> Lexer<'a> {
         buf.push(first);
         loop {
             if let Some(c) = self.peek() {
-                if c.is_alphanumeric() {
+                if c.is_alphanumeric() || *c == '_' {
                     let c = self.advance().unwrap();
                     buf.push(c);
                     continue;
@@ -386,7 +425,13 @@ impl<'a> Lexer<'a> {
                     _ if escaped => {
                         return self.report_error(LexError::UnexpectedEof("in string escape"))
                     }
-                    '"' => return self.span(Token::String(buf)),
+                    '"' => {
+                        if buf.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                            return self.span(Token::IdString(buf));
+                        } else {
+                            return self.span(Token::String(buf));
+                        }
+                    }
                     _ => buf.push(c),
                 }
             } else {
@@ -432,15 +477,8 @@ impl<'a> Lexer<'a> {
         Err(e)
     }
 
-    fn scan_indent(&mut self, w: char) -> Result<usize, LexError> {
+    fn scan_indent(&mut self) -> Result<usize, LexError> {
         let mut level = 0;
-        match w {
-            '\t' => level += 8,
-            ' ' => level += 1,
-            _ => return Err(LexError::unexpected_char(w, "scan_indent")),
-        }
-        self.line_start = false;
-
         loop {
             if let Some(c) = self.peek() {
                 match c {
@@ -515,6 +553,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexErrors> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use Token::*;
 
     fn assert_lex_eq(input: &str, tokens: Vec<Token>) {
         let lexer = Lexer::new(input);
@@ -532,7 +571,7 @@ mod tests {
 
     #[test]
     fn test_one() {
-        assert_lex_eq("if True:\n  False\nelse:\n  True", vec![])
+        assert_lex_eq("def foo():\n  pass\n\ndef bar():\n  pass", vec![]);
     }
 
     #[test]
@@ -540,86 +579,82 @@ mod tests {
         assert_lex_eq(
             "+-*//%==!==,:.->",
             vec![
-                Token::Plus,
-                Token::Minus,
-                Token::Multiply,
-                Token::IntegerDiv,
-                Token::Modulo,
-                Token::Equal,
-                Token::NotEqual,
-                Token::Assign,
-                Token::Comma,
-                Token::Colon,
-                Token::Dot,
-                Token::Arrow,
+                Plus, Minus, Multiply, IntegerDiv, Modulo, Equal, NotEqual, Assign, Comma, Colon,
+                Dot, Arrow, Newline,
             ],
         );
         assert_lex_eq(
             "<<=>>=",
             vec![
-                Token::LessThan,
-                Token::LessThanEqual,
-                Token::GreaterThan,
-                Token::GreaterThanEqual,
+                LessThan,
+                LessThanEqual,
+                GreaterThan,
+                GreaterThanEqual,
+                Newline,
             ],
         );
-        assert_lex_eq("()", vec![Token::OpenParen, Token::CloseParen]);
+        assert_lex_eq("()", vec![OpenParen, CloseParen, Newline]);
         assert_lex_eq("# blah blah", vec![]);
         assert_lex_eq("# blah blah\n", vec![]);
-        assert_lex_eq(
-            "1234 # blah blah\n",
-            vec![Token::Integer(1234), Token::Newline],
-        );
+        assert_lex_eq("1234 # blah blah\n", vec![Integer(1234), Newline]);
+        assert_lex_eq("\"foo\"", vec![IdString("foo".to_string()), Newline]);
         assert_lex_eq(
             r#""hello world""#,
-            vec![Token::String("hello world".to_string())],
+            vec![String("hello world".to_string()), Newline],
         );
         assert_lex_eq(
             r#""hello \"world""#,
-            vec![Token::String("hello \"world".to_string())],
+            vec![String("hello \"world".to_string()), Newline],
         );
-        assert_lex_eq("1234", vec![Token::Integer(1234)]);
+        assert_lex_eq("1234", vec![Integer(1234), Newline]);
         assert_lex_eq(
             "[1, 2]",
             vec![
-                Token::OpenBracket,
-                Token::Integer(1),
-                Token::Comma,
-                Token::Integer(2),
-                Token::CloseBracket,
+                OpenBracket,
+                Integer(1),
+                Comma,
+                Integer(2),
+                CloseBracket,
+                Newline,
             ],
+        );
+        assert_lex_eq(
+            "__init__",
+            vec![Identifier("__init__".to_string()), Newline],
         );
         assert_lex_eq(
             "a = 1",
-            vec![
-                Token::Identifier("a".to_string()),
-                Token::Assign,
-                Token::Integer(1),
-            ],
+            vec![Identifier("a".to_string()), Assign, Integer(1), Newline],
         );
         assert_lex_eq(
             "return a",
-            vec![Token::Return, Token::Identifier("a".to_string())],
+            vec![Return, Identifier("a".to_string()), Newline],
         );
         assert_lex_eq("\n\n\n\n", vec![]);
         assert_lex_eq(
             "def foo(a: int):\n\tb = 0\n",
             vec![
-                Token::Def,
-                Token::Identifier("foo".to_string()),
-                Token::OpenParen,
-                Token::Identifier("a".to_string()),
-                Token::Colon,
-                Token::Identifier("int".to_string()),
-                Token::CloseParen,
-                Token::Colon,
-                Token::Newline,
-                Token::Indent,
-                Token::Identifier("b".to_string()),
-                Token::Assign,
-                Token::Integer(0),
-                Token::Newline,
+                Def,
+                Identifier("foo".to_string()),
+                OpenParen,
+                Identifier("a".to_string()),
+                Colon,
+                Identifier("int".to_string()),
+                CloseParen,
+                Colon,
+                Newline,
+                Indent,
+                Identifier("b".to_string()),
+                Assign,
+                Integer(0),
+                Newline,
             ],
-        )
+        );
+        assert_lex_eq(
+            "if True:\n  False\n  # foo\n  False",
+            vec![
+                If, True, Colon, Newline, Indent, False, Newline, False, Newline,
+            ],
+        );
     }
 }

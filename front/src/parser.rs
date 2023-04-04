@@ -319,6 +319,7 @@ impl<'a> Parser<'a> {
             }
             stmts.push(self.statement()?);
         }
+        self.consume(Token::Dedent, "fun body")?;
         Some(ast::FunctionDef {
             id,
             params,
