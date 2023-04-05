@@ -297,25 +297,28 @@ impl<'a> Parser<'a> {
         loop {
             if self.is_typed_var() {
                 vars.push(self.variable_def()?);
+                continue;
             }
             if self.check(Token::Def) {
                 funcs.push(self.function_def()?);
+                continue;
             }
             if self.check(Token::Global) {
                 self.advance("global");
-                decls.push(ast::Declaration::Global(self.identifier()?))
+                decls.push(ast::Declaration::Global(self.identifier()?));
+                self.consume(Token::Newline, "global")?;
+                continue;
             }
             if self.check(Token::NonLocal) {
                 self.advance("nonlocal");
-                decls.push(ast::Declaration::NonLocal(self.identifier()?))
+                decls.push(ast::Declaration::NonLocal(self.identifier()?));
+                self.consume(Token::Newline, "nonlocal")?;
+                continue;
             }
             break;
         }
         let mut stmts = vec![];
-        loop {
-            if self.check(Token::Dedent) {
-                break;
-            }
+        while !self.check(Token::Dedent) {
             stmts.push(self.statement()?);
         }
         self.consume(Token::Dedent, "fun body")?;
@@ -912,6 +915,7 @@ mod tests {
         assert_parses("a = 1");
         assert_parses("a:int = 1");
         assert_parses("if True:\n  True\nelse:\n  False");
-        assert_parses("a()"); // todo: call can be empty too!
+        assert_parses("a()");
+        assert_parses("return f(y)\n");
     }
 }
