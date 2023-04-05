@@ -12,14 +12,15 @@ fn test_lexer_on_examples() -> Result<(), Box<dyn Error>> {
         let bytes = fs::read(path)?;
         let input = std::str::from_utf8(&bytes)?;
 
-        assert!(lexer::lex(input).is_ok());
+        let mut p = Parser::new(lexer::Lexer::new(input));
+        p.parse()?;
     }
     Ok(())
 }
 
 #[test]
 fn test_lexer_with_include_str() -> Result<(), Box<dyn Error>> {
-    let mut p = Parser::new(lexer::Lexer::new(include_str!("../data/examples/ex2.py")));
+    let mut p = Parser::new(lexer::Lexer::new(include_str!("../data/examples/ex3.py")));
     p.parse()?;
     Ok(())
 }
