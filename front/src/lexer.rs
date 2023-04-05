@@ -142,6 +142,7 @@ enum LineState {
     Start,
     Indent(usize),
     Logical,
+    Dedent(usize),
 }
 
 // https://craftinginterpreters.com/scanning.html
@@ -206,27 +207,32 @@ impl<'a> Lexer<'a> {
                     LineState::Start if c == '#' => (),
                     LineState::Start => {
                         self.line_state = LineState::Logical;
-                        let dedent = self.indent_stack.len() > 1;
+                        let dedent = self.indent_stack.len() - 1;
                         self.indent_stack.truncate(1);
-                        if dedent {
-                            return self.span(Token::Dedent);
+                        if dedent > 0 {
+                            self.line_state = LineState::Dedent(dedent);
+                            continue;
                         }
+                    }
+                    LineState::Dedent(d) if d > 0 => {
+                        println!("dedent {}", d);
+                        self.line_state = LineState::Dedent(d - 1);
+                        return self.span(Token::Dedent)
+                    }
+                    LineState::Dedent(_) => {
+                        self.line_state = LineState::Logical;
+                        continue;
                     }
                     LineState::Indent(indent) if !c.is_whitespace() && c != '#' => {
                         self.line_state = LineState::Logical;
-                        if *self.indent_stack.last().expect("never empty") < indent {
-                            self.indent_stack.push(indent);
-                            return self.span(Token::Indent);
-                        } else if let Some(idx) =
-                            self.indent_stack.iter().position(|l| *l == indent)
-                        {
-                            if idx == self.indent_stack.len() - 1 && idx != 0 {
+                        match compute_indentation(&mut self.indent_stack, indent) {
+                            IndentationResult::Indent => return self.span(Token::Indent),
+                            IndentationResult::Dedent(d) => {
+                                self.line_state = LineState::Dedent(d);
                                 continue;
                             }
-                            self.indent_stack.truncate(idx);
-                            return self.span(Token::Dedent);
-                        } else {
-                            return self.report_error(LexError::TabError);
+                            IndentationResult::NoOp => (),
+                            IndentationResult::Error => return self.report_error(LexError::TabError),
                         }
                     }
                     LineState::Indent(_) => (),
@@ -248,6 +254,7 @@ impl<'a> Lexer<'a> {
 
                         match self.line_state {
                             LineState::Start => (),
+                            LineState::Dedent(_) => self.line_state = LineState::Start, // todo?
                             LineState::Indent(_) => self.line_state = LineState::Start,
                             LineState::Logical => {
                                 self.line_state = LineState::Start;
@@ -495,7 +502,6 @@ impl<'a> Lexer<'a> {
         Ok(level)
     }
 }
-
 impl<'a> Iterator for Lexer<'a> {
     type Item = Result<Span, LexError>;
 
@@ -506,6 +512,36 @@ impl<'a> Iterator for Lexer<'a> {
             }) => None,
             s => Some(s),
         }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum IndentationResult {
+    Indent,
+    Dedent(usize),
+    NoOp,
+    Error
+}
+
+fn compute_indentation(indent_stack: &mut Vec<usize>, indent_level: usize) -> IndentationResult {
+    let top = *indent_stack.last().expect("never empty");
+    if top < indent_level {
+        indent_stack.push(indent_level);
+        IndentationResult::Indent
+    } else if top == indent_level {
+        IndentationResult::NoOp
+    } else if let Some(idx) =
+        indent_stack.iter().rposition(|l| *l == indent_level)
+    {
+        if idx == indent_stack.len() - 1 && idx != 0 {
+            IndentationResult::NoOp
+        } else {
+            let dedents = indent_stack.len() - (idx + 1);
+            indent_stack.truncate(idx+1);
+            IndentationResult::Dedent(dedents)
+        }
+    } else {
+        IndentationResult::Error
     }
 }
 
@@ -555,6 +591,17 @@ mod tests {
     use super::*;
     use Token::*;
 
+    #[test]
+    fn test_compute_indentation() {
+        assert_eq!(compute_indentation(&mut vec![0], 0), IndentationResult::NoOp);
+        assert_eq!(compute_indentation(&mut vec![0], 4), IndentationResult::Indent);
+        assert_eq!(compute_indentation(&mut vec![0, 4], 4), IndentationResult::NoOp);
+        assert_eq!(compute_indentation(&mut vec![0, 8], 4), IndentationResult::Error);
+        assert_eq!(compute_indentation(&mut vec![0, 8, 16], 8), IndentationResult::Dedent(1));
+        assert_eq!(compute_indentation(&mut vec![0, 8, 16], 0), IndentationResult::Dedent(2));
+        assert_eq!(compute_indentation(&mut vec![0, 2, 4], 0), IndentationResult::Dedent(2));
+    }
+
     fn assert_lex_eq(input: &str, tokens: Vec<Token>) {
         let lexer = Lexer::new(input);
         let mut output = vec![];
@@ -571,7 +618,7 @@ mod tests {
 
     #[test]
     fn test_one() {
-        assert_lex_eq("def foo():\n  pass\n\ndef bar():\n  pass", vec![]);
+        assert_lex_eq("class Foo(object):\n  def bar(self:\"Foo\"):\n    pass\nx = 1", vec![]);
     }
 
     #[test]

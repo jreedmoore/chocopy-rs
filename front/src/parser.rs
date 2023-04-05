@@ -253,10 +253,9 @@ impl<'a> Parser<'a> {
                 // if we hit a def token we're defining a function
                 if self.check(Token::Def) {
                     funcs.push(self.function_def()?);
+                } else {
+                    vars.push(self.variable_def()?);
                 }
-                // otherwise must be a variable
-                // TODO: not sure how ? early escape error recovery will work
-                vars.push(self.variable_def()?);
             }
             self.consume_or_eof(Token::Dedent, "class body")?;
             Some(ast::ClassDef {
@@ -452,7 +451,11 @@ impl<'a> Parser<'a> {
     }
 
     fn is_typed_var(&mut self) -> bool {
-        self.is_identifier() && self.check2(Token::Colon)
+        let b = self.is_identifier() && self.check2(Token::Colon);
+        if b {
+            println!("is_typed_var")
+        }
+        b
     }
 
     fn typed_var(&mut self) -> Option<ast::TypedVar> {
@@ -676,7 +679,7 @@ impl<'a> Parser<'a> {
         let token = self.advance("access exp")?;
         match token {
             Token::OpenBracket => {
-                let rhs = self.expression_bp(min_bp)?;
+                let rhs = self.expression_bp(0)?;
                 let lhs = self.exprs.pop()?;
                 self.consume(Token::CloseBracket, "index")?;
                 Some(ast::Expression::Index(ast::IndexExpression {
@@ -696,16 +699,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn call_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
+    fn call_exp(&mut self, _min_bp: usize) -> Option<ast::Expression> {
         self.consume(Token::OpenParen, "call")?;
         let lhs = self.exprs.pop()?;
         let mut args = vec![];
-        loop {
-            args.push(self.expression_bp(0)?);
-            if self.check(Token::Comma) {
-                self.advance("call exp");
-            } else {
-                break;
+        if !self.check(Token::CloseParen) {
+            loop {
+                args.push(self.expression_bp(0)?);
+                if self.check(Token::Comma) {
+                    self.advance("call exp");
+                } else {
+                    break;
+                }
             }
         }
         self.consume(Token::CloseParen, "call")?;
@@ -907,5 +912,6 @@ mod tests {
         assert_parses("a = 1");
         assert_parses("a:int = 1");
         assert_parses("if True:\n  True\nelse:\n  False");
+        assert_parses("a()"); // todo: call can be empty too!
     }
 }
