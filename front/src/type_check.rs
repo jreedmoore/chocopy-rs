@@ -48,7 +48,7 @@ impl TypeChecker {
     pub fn check_expression(&self, e: &ast::Expression) -> Result<ChocoType, TypeError> {
         match e {
             ast::Expression::Not(b) => TypeChecker::match_type(ChocoType::Bool, self.check_expression(b)?),
-            ast::Expression::LogicalBinaryOp(_, l, r) => {
+            ast::Expression::BinaryOp(ast::BinOp::And | ast::BinOp::Or, l, r) => {
                 TypeChecker::match_type(ChocoType::Bool, self.check_expression(l)?)?;
                 TypeChecker::match_type(ChocoType::Bool, self.check_expression(r)?)?;
                 Ok(ChocoType::Bool)
@@ -71,6 +71,7 @@ impl TypeChecker {
             ast::Expression::Lit(ast::Literal::IdStr(_) | ast::Literal::Str(_)) => Ok(ChocoType::Str),
             ast::Expression::Lit(ast::Literal::None) => Ok(ChocoType::None),
 
+            // what about lists?
             ast::Expression::BinaryOp(_, l, r) => {
                 TypeChecker::match_type(ChocoType::Int, self.check_expression(l)?)?;
                 TypeChecker::match_type(ChocoType::Int, self.check_expression(r)?)?;

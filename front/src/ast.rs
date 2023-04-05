@@ -95,13 +95,11 @@ pub enum Literal {
 #[derive(Debug)]
 pub enum Expression {
     Not(Box<Expression>),
-    LogicalBinaryOp(LogicalBinOp, Box<Expression>, Box<Expression>),
     Ternary {
         e: Box<Expression>,
         if_expr: Box<Expression>,
         else_expr: Box<Expression>,
     },
-
     // cexpression
     // feels little bit bad that we're throwing away structural guarantees from the grammar
     // but it's kind of annoying to deal with the CExpression breakdown
@@ -117,11 +115,6 @@ pub enum Expression {
 }
 
 #[derive(Debug)]
-pub enum LogicalBinOp {
-    And,
-    Or,
-}
-#[derive(Debug)]
 pub struct MemberExpression {
     pub expr: Box<Expression>,
     pub id: Identifier,
@@ -134,6 +127,8 @@ pub struct IndexExpression {
 
 #[derive(Debug)]
 pub enum BinOp {
+    And,
+    Or,
     Plus,
     Minus,
     Multiply,

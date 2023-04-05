@@ -26,7 +26,6 @@ pub fn expression(e: &ast::Expression, _ctype: ChocoType) -> Vec<WASMInstr> {
         ast::Expression::Lit(ast::Literal::Integer(i)) => vec![WASMInstr::I64Const((*i as i64) << 2), WASMInstr::Call("host_print".to_string())],
         ast::Expression::Lit(_) => todo!(),
         //
-        ast::Expression::LogicalBinaryOp(_, _, _) => todo!(),
         ast::Expression::Ternary { e, if_expr, else_expr } => todo!(),
         ast::Expression::Id(_) => todo!(),
         ast::Expression::Not(_) => todo!(),

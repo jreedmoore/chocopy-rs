@@ -536,8 +536,8 @@ impl<'a> Parser<'a> {
 
     fn logical_infix(&mut self, min_bp: usize) -> Option<ast::Expression> {
         let bin_op = match self.advance("infix")? {
-            Token::And => ast::LogicalBinOp::And,
-            Token::Or => ast::LogicalBinOp::Or,
+            Token::And => ast::BinOp::And,
+            Token::Or => ast::BinOp::Or,
             t => {
                 self.error(ParseError::unexpected_token(t, "logical infix"));
                 return None;
@@ -545,7 +545,7 @@ impl<'a> Parser<'a> {
         };
 
         let rhs = self.expression_bp(min_bp)?;
-        Some(ast::Expression::LogicalBinaryOp(
+        Some(ast::Expression::BinaryOp(
             bin_op,
             Box::new(self.exprs.pop()?),
             Box::new(rhs),
