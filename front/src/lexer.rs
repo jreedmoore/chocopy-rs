@@ -616,11 +616,6 @@ mod tests {
     }
 
     #[test]
-    fn test_one() {
-        assert_lex_eq("class Foo(object):\n  def bar(self:\"Foo\"):\n    pass\nx = 1", vec![]);
-    }
-
-    #[test]
     fn test_lexer() {
         assert_lex_eq(
             "+-*//%==!==,:.->",

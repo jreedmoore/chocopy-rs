@@ -11,5 +11,4 @@ edition = "2021"
 members = [
   "front",
   "entrypoint",
-  "ast_interp"
 ]
