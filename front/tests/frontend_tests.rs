@@ -9,11 +9,15 @@ fn test_lexer_on_examples() -> Result<(), Box<dyn Error>> {
         let entry = entry?;
         let path = entry.path();
 
-        let bytes = fs::read(path)?;
+        let bytes = fs::read(path.clone())?;
         let input = std::str::from_utf8(&bytes)?;
 
         let mut p = Parser::new(lexer::Lexer::new(input));
-        p.parse()?;
+
+        match p.parse() {
+            Ok(_) => (),
+            Err(e) => panic!("Failed to parse {}: {:?}", path.display(), e)
+        };
     }
     Ok(())
 }

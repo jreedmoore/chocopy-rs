@@ -52,7 +52,6 @@ impl<'a> Parser<'a> {
                 error: error,
             }
         };
-        println!("error {:?}", ann);
         self.errors.push(ann);
     }
 
@@ -125,12 +124,10 @@ impl<'a> Parser<'a> {
     fn advance(&mut self, during: &'static str) -> Option<Token> {
         if let Some(span) = self.peek.pop_front() {
             self.current = Some(span.clone());
-            println!("advance {:?}: {}", span.token, during);
             Some(span.token)
         } else {
             if let Some(span) = self.get_next() {
                 self.current = Some(span.clone());
-                println!("advance {:?}: {}", span.token, during);
                 Some(span.token)
             } else {
                 self.error(ParseError::UnexpectedEof(during));
@@ -454,11 +451,7 @@ impl<'a> Parser<'a> {
     }
 
     fn is_typed_var(&mut self) -> bool {
-        let b = self.is_identifier() && self.check2(Token::Colon);
-        if b {
-            println!("is_typed_var")
-        }
-        b
+        self.is_identifier() && self.check2(Token::Colon)
     }
 
     fn typed_var(&mut self) -> Option<ast::TypedVar> {

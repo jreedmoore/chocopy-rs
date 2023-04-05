@@ -215,7 +215,6 @@ impl<'a> Lexer<'a> {
                         }
                     }
                     LineState::Dedent(d) if d > 0 => {
-                        println!("dedent {}", d);
                         self.line_state = LineState::Dedent(d - 1);
                         return self.span(Token::Dedent)
                     }
