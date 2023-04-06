@@ -50,7 +50,7 @@ pub struct VariableDef {
     pub literal: Literal,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Identifier {
     pub name: String,
 }
@@ -82,7 +82,7 @@ pub enum Statement {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Literal {
     None,
     True,
@@ -125,10 +125,11 @@ pub struct IndexExpression {
     pub index: Box<Expression>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinOp {
     And,
     Or,
+    Xor, // not emitted by frontend, but used to simplify unary negation
     Plus,
     Minus,
     Multiply,

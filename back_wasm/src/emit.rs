@@ -1,6 +1,6 @@
 // Code emissions for WebAssembly
 
-use front::ast;
+use front::{ast, annotated_ast};
 use front::type_check::ChocoType;
 use crate::wasm::*;
 

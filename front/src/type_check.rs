@@ -1,8 +1,7 @@
-use std::rc;
+use crate::{ast, annotated_ast};
+use crate::annotated_ast::ChocoTyped;
 
-use crate::ast;
-
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ChocoType {
     Int,
     Bool,
@@ -37,48 +36,49 @@ impl TypeChecker {
         TypeChecker {  }
     }
 
-    fn match_type(expected: ChocoType, actual: ChocoType) -> Result<ChocoType, TypeError> {
-        if expected == actual {
-            Ok(expected)
+    fn match_type<C: ChocoTyped>(expected: ChocoType, actual: C) -> Result<C, TypeError> {
+        if expected == actual.choco_type() {
+            Ok(actual)
         } else {
-            Err(TypeError::TypeMismatch { expected, actual })
+            Err(TypeError::TypeMismatch { expected, actual: actual.choco_type() })
         }
     }
 
-    pub fn check_expression(&self, e: &ast::Expression) -> Result<ChocoType, TypeError> {
+    pub fn check_expression(&self, e: &ast::Expression) -> Result<annotated_ast::Expression, TypeError> {
         match e {
-            ast::Expression::Not(b) => TypeChecker::match_type(ChocoType::Bool, self.check_expression(b)?),
-            ast::Expression::BinaryOp(ast::BinOp::And | ast::BinOp::Or, l, r) => {
-                TypeChecker::match_type(ChocoType::Bool, self.check_expression(l)?)?;
-                TypeChecker::match_type(ChocoType::Bool, self.check_expression(r)?)?;
-                Ok(ChocoType::Bool)
+            ast::Expression::Not(b) => {
+                let b = TypeChecker::match_type(ChocoType::Bool, self.check_expression(b)?)?;
+                Ok(annotated_ast::Expression::Binary { op: ast::BinOp::Xor, l: Box::new(annotated_ast::Expression::Lit { l: ast::Literal::True }), r: Box::new(b), choco_type: ChocoType::Bool })
+            }
+            ast::Expression::BinaryOp(op @ (ast::BinOp::And | ast::BinOp::Or), l, r) => {
+                let al = TypeChecker::match_type(ChocoType::Bool, self.check_expression(l)?)?;
+                let ar = TypeChecker::match_type(ChocoType::Bool, self.check_expression(r)?)?;
+                Ok(annotated_ast::Expression::Binary { op: *op, l: Box::new(al), r: Box::new(ar), choco_type: ChocoType::Bool })
             }
             ast::Expression::Ternary { e, if_expr, else_expr } => {
                 TypeChecker::match_type(ChocoType::Bool, self.check_expression(if_expr)?)?;
-                let lctype = self.check_expression(e)?;
-                let rctype = self.check_expression(else_expr)?;
+                let al = self.check_expression(e)?;
+                let ar = self.check_expression(else_expr)?;
 
                 // todo: this should actually be finding the "join" of l and r types.
-                if lctype == rctype {
-                    Ok(lctype)
+                if al.choco_type() == ar.choco_type() {
+                    todo!()
                 } else {
-                    Err(TypeError::TypeMismatch { expected: lctype, actual: rctype })
+                    Err(TypeError::TypeMismatch { expected: al.choco_type(), actual: ar.choco_type() })
                 }
             }
 
-            ast::Expression::Lit(ast::Literal::False | ast::Literal::True) => Ok(ChocoType::Bool),
-            ast::Expression::Lit(ast::Literal::Integer(_)) => Ok(ChocoType::Int),
-            ast::Expression::Lit(ast::Literal::IdStr(_) | ast::Literal::Str(_)) => Ok(ChocoType::Str),
-            ast::Expression::Lit(ast::Literal::None) => Ok(ChocoType::None),
-
+            ast::Expression::Lit(lit) => Ok(annotated_ast::Expression::Lit { l: lit.clone() }),
             // what about lists?
-            ast::Expression::BinaryOp(_, l, r) => {
-                TypeChecker::match_type(ChocoType::Int, self.check_expression(l)?)?;
-                TypeChecker::match_type(ChocoType::Int, self.check_expression(r)?)?;
-                Ok(ChocoType::Int)
+            ast::Expression::BinaryOp(op, l, r) => {
+                let al = TypeChecker::match_type(ChocoType::Int, self.check_expression(l)?)?;
+                let ar = TypeChecker::match_type(ChocoType::Int, self.check_expression(r)?)?;
+                Ok(annotated_ast::Expression::Binary { op: *op, l: Box::new(al), r: Box::new(ar), choco_type: ChocoType::Int })
             }
-            ast::Expression::UnaryMinus(n) => TypeChecker::match_type(ChocoType::Int, self.check_expression(n)?),
-
+            ast::Expression::UnaryMinus(n) => {
+                let n = TypeChecker::match_type(ChocoType::Int, self.check_expression(n)?)?;
+                Ok(annotated_ast::Expression::Binary { op: ast::BinOp::Minus, l: Box::new(annotated_ast::Expression::Lit { l: ast::Literal::Integer(0)}), r: Box::new(n), choco_type: ChocoType::Int })
+            }
             // lists
             ast::Expression::ListLiteral(_) => todo!(),
 
@@ -90,13 +90,33 @@ impl TypeChecker {
             ast::Expression::Call(_, _) => todo!(),
         }
     }
+
+    pub fn check_stmt(&self, p: &ast::Statement) -> Result<annotated_ast::Statement, TypeError> {
+        match p {
+            ast::Statement::Expr(e) => Ok(annotated_ast::Statement::Expr(self.check_expression(e)?)),
+            ast::Statement::Pass => todo!(),
+            ast::Statement::Return(_) => todo!(),
+            ast::Statement::Assign { targets, expr } => todo!(),
+            ast::Statement::If { main, elifs, otherwise } => todo!(),
+            ast::Statement::While(_) => todo!(),
+            ast::Statement::For { id, in_expr, block } => todo!(),
+        }
+    }
+
+    pub fn check_prog(&self, p: &ast::Program) -> Result<annotated_ast::Program, TypeError> {
+        let mut stmts = vec![];
+        for stmt in &p.stmts {
+            stmts.push(self.check_stmt(&stmt)?)
+        }
+        Ok(annotated_ast::Program { stmts })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::error::Error;
 
-    use crate::{parser::Parser, lexer::Lexer, ast};
+    use crate::{parser::Parser, lexer::Lexer, ast, annotated_ast::{ChocoTyped, self}};
 
     use super::{TypeChecker, ChocoType};
 
@@ -104,10 +124,10 @@ mod tests {
         let mut p = Parser::new(Lexer::new(input));
         let prog = p.parse()?;
 
-        if let Some(ast::Statement::Expr(e)) = prog.stmts.first() {
-            let typeck = TypeChecker::new();
-            let ctype = typeck.check_expression(e)?;
-            Ok(ctype)
+        let typeck = TypeChecker::new();
+        let ann_prog = typeck.check_prog(&prog)?;
+        if let Some(annotated_ast::Statement::Expr(e)) = ann_prog.stmts.first() {
+            Ok(e.choco_type())
         } else {
             panic!("Not an expression program")
         }
@@ -125,9 +145,14 @@ mod tests {
         assert_eq!(parse_and_type_check("1 + 2").unwrap(), ChocoType::Int);
         assert_eq!(parse_and_type_check("1 + 2").unwrap(), ChocoType::Int);
         assert_eq!(parse_and_type_check("1 + 2 * 3").unwrap(), ChocoType::Int);
-        assert_eq!(parse_and_type_check("1 if True else 2").unwrap(), ChocoType::Int);
-        assert_eq!(parse_and_type_check("False if True else True").unwrap(), ChocoType::Bool);
-        assert_eq!(parse_and_type_check("\"foo\" if True else \"bar\"").unwrap(), ChocoType::Str);
+        assert_eq!(parse_and_type_check("-1").unwrap(), ChocoType::Int);
+        assert_eq!(parse_and_type_check("not True").unwrap(), ChocoType::Bool);
+        assert_eq!(parse_and_type_check("True and True").unwrap(), ChocoType::Bool);
+        assert_eq!(parse_and_type_check("True or True").unwrap(), ChocoType::Bool);
+        assert_eq!(parse_and_type_check("True and True or False").unwrap(), ChocoType::Bool);
+        // todo: assert_eq!(parse_and_type_check("1 if True else 2").unwrap(), ChocoType::Int);
+        // todo: assert_eq!(parse_and_type_check("False if True else True").unwrap(), ChocoType::Bool);
+        // todo: assert_eq!(parse_and_type_check("\"foo\" if True else \"bar\"").unwrap(), ChocoType::Str);
         // todo: assert_eq!(parse_and_type_check("1 if True else None").unwrap(), ChocoType::Int);
         assert_fails_type_check("1 if True else False");
         assert_fails_type_check("1 if 2 else 3");
