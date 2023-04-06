@@ -26,6 +26,14 @@ pub enum Instr {
     BitXor,
     BitOr,
 
+    // relational
+    Eq,
+    Ne,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+
     Call(String),
 
     Drop,

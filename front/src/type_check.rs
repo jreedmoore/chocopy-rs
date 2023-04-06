@@ -71,9 +71,39 @@ impl TypeChecker {
             ast::Expression::Lit(lit) => Ok(annotated_ast::Expression::Lit { l: lit.clone() }),
             // what about lists?
             ast::Expression::BinaryOp(op, l, r) => {
-                let al = TypeChecker::match_type(ChocoType::Int, self.check_expression(l)?)?;
-                let ar = TypeChecker::match_type(ChocoType::Int, self.check_expression(r)?)?;
-                Ok(annotated_ast::Expression::Binary { op: *op, l: Box::new(al), r: Box::new(ar), choco_type: ChocoType::Int })
+                let al = self.check_expression(l)?;
+                let ar = self.check_expression(r)?;
+                if al.choco_type() != ar.choco_type() {
+                    return Err(TypeError::TypeMismatch { expected: al.choco_type(), actual: ar.choco_type() })
+                };
+                let rel_type = al.choco_type();
+                let res_type = match op {
+                    ast::BinOp::Plus 
+                    | ast::BinOp::Minus
+                    | ast::BinOp::Multiply
+                    | ast::BinOp::IntegerDiv
+                    | ast::BinOp::Modulo => {
+                        if rel_type != ChocoType::Int {
+                            return Err(TypeError::TypeMismatch { expected: ChocoType::Int, actual: rel_type })
+                        }
+                        ChocoType::Int
+                    },
+                    ast::BinOp::Equals
+                    | ast::BinOp::NotEquals => ChocoType::Bool,
+                    ast::BinOp::LessThan
+                    | ast::BinOp::LessThanEqual
+                    | ast::BinOp::GreaterThan
+                    | ast::BinOp::GreaterThanEqual => {
+                        if rel_type != ChocoType::Int {
+                            return Err(TypeError::TypeMismatch { expected: ChocoType::Int, actual: rel_type })
+                        }
+                        ChocoType::Bool
+                    }
+
+                    ast::BinOp::Is => todo!(),
+                    ast::BinOp::And | ast::BinOp::Or => unreachable!(),
+                };
+                Ok(annotated_ast::Expression::Binary { op: *op, l: Box::new(al), r: Box::new(ar), choco_type: res_type })
             }
             ast::Expression::UnaryMinus(n) => {
                 let n = TypeChecker::match_type(ChocoType::Int, self.check_expression(n)?)?;
@@ -164,6 +194,9 @@ mod tests {
         assert_eq!(parse_and_type_check("True and True").unwrap(), ChocoType::Bool);
         assert_eq!(parse_and_type_check("True or True").unwrap(), ChocoType::Bool);
         assert_eq!(parse_and_type_check("True and True or False").unwrap(), ChocoType::Bool);
+        assert_eq!(parse_and_type_check("1 > 2").unwrap(), ChocoType::Bool);
+        assert_eq!(parse_and_type_check("1 == 2").unwrap(), ChocoType::Bool);
+        assert_eq!(parse_and_type_check("True == False").unwrap(), ChocoType::Bool);
         // todo: assert_eq!(parse_and_type_check("1 if True else 2").unwrap(), ChocoType::Int);
         // todo: assert_eq!(parse_and_type_check("False if True else True").unwrap(), ChocoType::Bool);
         // todo: assert_eq!(parse_and_type_check("\"foo\" if True else \"bar\"").unwrap(), ChocoType::Str);

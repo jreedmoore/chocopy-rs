@@ -23,5 +23,11 @@ fn test_exprs() -> anyhow::Result<()> {
     assert_output("print(2 * 2)", vec!["4"])?;
     assert_output("print(2 // 2)", vec!["1"])?;
     assert_output("print(5 % 2)", vec!["1"])?;
+    assert_output("print(1 < 2)", vec!["True"])?;
+    assert_output("print(1 > 2)", vec!["False"])?;
+    assert_output("print(1 == 2)", vec!["False"])?;
+    assert_output("print(1 >= 1)", vec!["True"])?;
+    assert_output("print(1 <= 1)", vec!["True"])?;
+    assert_output("print((1 > 2) or (1 < 2))", vec!["True"])?;
     Ok(())
 }

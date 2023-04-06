@@ -15,6 +15,16 @@ pub enum WASMInstr {
     I64DivSigned,
     I64ShrSigned,
     I64ShiftLeft,
+    I64RotateRight,
+
+    I64ExtendI32,
+
+    I64Eq,
+    I64Ne,
+    I64Lt,
+    I64Lte,
+    I64Gt,
+    I64Gte,
 }
 impl WATPrint for WASMInstr {
     fn wat_print(&self) -> String {
@@ -32,7 +42,15 @@ impl WATPrint for WASMInstr {
             WASMInstr::I64RemSigned => format!("i64.rem_s"),
             WASMInstr::I64DivSigned => format!("i64.div_s"),
             WASMInstr::I64ShrSigned => format!("i64.shr_s"),
-            WASMInstr::I64ShiftLeft => format!("i64.shl")
+            WASMInstr::I64ShiftLeft => format!("i64.shl"),
+            WASMInstr::I64RotateRight => format!("i64.rotr"),
+            WASMInstr::I64ExtendI32 => format!("i64.extend_i32_u"),
+            WASMInstr::I64Eq => format!("i64.eq"),
+            WASMInstr::I64Ne => format!("i64.ne"),
+            WASMInstr::I64Lt => format!("i64.lt_s"),
+            WASMInstr::I64Lte => format!("i64.le_s"),
+            WASMInstr::I64Gt => format!("i64.gt_s"),
+            WASMInstr::I64Gte => format!("i64.ge_s"),
         }
     }
 }

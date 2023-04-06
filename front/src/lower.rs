@@ -75,12 +75,14 @@ impl Lower {
                     crate::ast::BinOp::IntegerDiv => Instr::Div,
                     crate::ast::BinOp::Modulo => Instr::Modulo,
 
-                    crate::ast::BinOp::Equals => todo!(),
-                    crate::ast::BinOp::NotEquals => todo!(),
-                    crate::ast::BinOp::LessThan => todo!(),
-                    crate::ast::BinOp::LessThanEqual => todo!(),
-                    crate::ast::BinOp::GreaterThan => todo!(),
-                    crate::ast::BinOp::GreaterThanEqual => todo!(),
+                    crate::ast::BinOp::Equals => Instr::Eq,
+                    crate::ast::BinOp::NotEquals => Instr::Ne,
+                    crate::ast::BinOp::LessThan => Instr::Lt,
+                    crate::ast::BinOp::LessThanEqual => Instr::Lte,
+                    crate::ast::BinOp::GreaterThan => Instr::Gt,
+                    crate::ast::BinOp::GreaterThanEqual => Instr::Gte,
+
+                    // object id comparison, only makes sense with allocation implemented
                     crate::ast::BinOp::Is => todo!(),
                 });
                 if *op == crate::ast::BinOp::Multiply {
