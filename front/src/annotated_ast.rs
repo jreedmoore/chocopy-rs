@@ -4,14 +4,17 @@ pub struct Program {
     pub stmts: Vec<Statement>
 }
 
+#[derive(Debug, Clone)]
 pub enum Statement {
     Expr(Expression)
 }
 
+#[derive(Debug, Clone)]
 pub enum Expression {
     Binary { op: ast::BinOp, l: Box<Expression>, r: Box<Expression>, choco_type: ChocoType },
     Call { f: Box<Expression>, params: Vec<Expression>, choco_type: ChocoType },
     Lit { l: ast::Literal },
+    Identifier { name: String, choco_type: ChocoType },
 }
 
 pub(crate) trait ChocoTyped {
@@ -23,6 +26,8 @@ impl ChocoTyped for Expression {
         match self {
             Expression::Binary { choco_type, .. } => *choco_type,
             Expression::Call { choco_type, .. } => *choco_type,
+            Expression::Identifier { choco_type, .. } => *choco_type,
+
             Expression::Lit { l: ast::Literal::True | ast::Literal::False } => ChocoType::Bool,
             Expression::Lit { l: ast::Literal::Integer(_) } => ChocoType::Int,
             Expression::Lit { l: ast::Literal::None } => ChocoType::None,

@@ -1,11 +1,12 @@
 use crate::{ast, annotated_ast};
-use crate::annotated_ast::ChocoTyped;
+use crate::annotated_ast::{ChocoTyped, Expression};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ChocoType {
     Int,
     Bool,
     Str,
+    Fun,
     None // the unmentionable type!
 }
 
@@ -79,6 +80,12 @@ impl TypeChecker {
                 let n = TypeChecker::match_type(ChocoType::Int, self.check_expression(n)?)?;
                 Ok(annotated_ast::Expression::Binary { op: ast::BinOp::Minus, l: Box::new(annotated_ast::Expression::Lit { l: ast::Literal::Integer(0)}), r: Box::new(n), choco_type: ChocoType::Int })
             }
+            // hack in support for print
+            ast::Expression::Call(id, es) if id.name == "print" => {
+                let es = self.check_exprs(es)?;
+                let e = es[0].clone();
+                Ok(annotated_ast::Expression::Call { f: Box::new(annotated_ast::Expression::Identifier { name: "host_print".to_string(), choco_type: ChocoType::Fun }), params: vec![e], choco_type: es[0].choco_type() })
+            }
             // lists
             ast::Expression::ListLiteral(_) => todo!(),
 
@@ -89,6 +96,14 @@ impl TypeChecker {
             ast::Expression::MemberCall(_, _) => todo!(),
             ast::Expression::Call(_, _) => todo!(),
         }
+    }
+
+    pub fn check_exprs(&self, es: &[ast::Expression]) -> Result<Vec<annotated_ast::Expression>, TypeError> {
+        let mut ann_es = vec![];
+        for e in es {
+            ann_es.push(self.check_expression(e)?)
+        } 
+        Ok(ann_es)
     }
 
     pub fn check_stmt(&self, p: &ast::Statement) -> Result<annotated_ast::Statement, TypeError> {
