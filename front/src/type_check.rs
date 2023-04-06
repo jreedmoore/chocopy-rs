@@ -56,13 +56,14 @@ impl TypeChecker {
                 Ok(annotated_ast::Expression::Binary { op: *op, l: Box::new(al), r: Box::new(ar), choco_type: ChocoType::Bool })
             }
             ast::Expression::Ternary { e, if_expr, else_expr } => {
-                TypeChecker::match_type(ChocoType::Bool, self.check_expression(if_expr)?)?;
+                let cond = TypeChecker::match_type(ChocoType::Bool, self.check_expression(if_expr)?)?;
                 let al = self.check_expression(e)?;
                 let ar = self.check_expression(else_expr)?;
 
                 // todo: this should actually be finding the "join" of l and r types.
+                let res_type = al.choco_type();
                 if al.choco_type() == ar.choco_type() {
-                    todo!()
+                    Ok(annotated_ast::Expression::Ternary { cond: Box::new(cond), then: Box::new(al), els: Box::new(ar), choco_type: res_type })
                 } else {
                     Err(TypeError::TypeMismatch { expected: al.choco_type(), actual: ar.choco_type() })
                 }

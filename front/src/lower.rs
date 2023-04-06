@@ -98,6 +98,15 @@ impl Lower {
                 params.iter().for_each(|p| self.lower_expr(p));
                 self.push_instr(Instr::Call(f.name.clone()))
             }
+            Expression::Ternary { cond, then, els, .. } => {
+                self.lower_expr(cond);
+                self.push_instr(Instr::If);
+                self.lower_expr(then);
+                self.push_instr(Instr::Else);
+                self.lower_expr(els);
+                self.push_instr(Instr::EndIf);
+            }
+
         }
     }
 }

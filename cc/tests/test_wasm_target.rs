@@ -30,5 +30,6 @@ fn test_exprs() -> anyhow::Result<()> {
     assert_output("print(1 <= 1)", vec!["True"])?;
     assert_output("print((1 > 2) or (1 < 2))", vec!["True"])?;
     assert_output("print((1 > 2))\nprint((1 < 2))", vec!["False", "True"])?;
+    assert_output("print(1 if True else 2)", vec!["1"])?;
     Ok(())
 }

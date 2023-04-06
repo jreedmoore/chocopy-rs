@@ -15,6 +15,7 @@ pub enum Expression {
     Call { f: FunId, params: Vec<Expression>, choco_type: ChocoType },
     Lit { l: ast::Literal },
     Unary { op: UnaryOp, e: Box<Expression>, choco_type: ChocoType },
+    Ternary { cond: Box<Expression>, then: Box<Expression>, els: Box<Expression>, choco_type: ChocoType }
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +43,7 @@ impl ChocoTyped for Expression {
             Expression::Lit { l: ast::Literal::None } => ChocoType::None,
             Expression::Lit { l: ast::Literal::Str(_) | ast::Literal::IdStr(_) } => ChocoType::Str,
             Expression::Unary { choco_type, .. } => *choco_type,
+            Expression::Ternary { choco_type, .. } => *choco_type,
         }
     }
 }

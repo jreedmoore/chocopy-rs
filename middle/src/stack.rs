@@ -37,4 +37,8 @@ pub enum Instr {
     Call(String),
 
     Drop,
+
+    If,
+    Else,
+    EndIf
 }
