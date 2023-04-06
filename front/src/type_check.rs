@@ -6,7 +6,6 @@ pub enum ChocoType {
     Int,
     Bool,
     Str,
-    Fun,
     None // the unmentionable type!
 }
 
@@ -84,7 +83,7 @@ impl TypeChecker {
             ast::Expression::Call(id, es) if id.name == "print" => {
                 let es = self.check_exprs(es)?;
                 let e = es[0].clone();
-                Ok(annotated_ast::Expression::Call { f: Box::new(annotated_ast::Expression::Identifier { name: "host_print".to_string(), choco_type: ChocoType::Fun }), params: vec![e], choco_type: es[0].choco_type() })
+                Ok(annotated_ast::Expression::Call { f: annotated_ast::FunId { name: "host_print".to_string() }, params: vec![e], choco_type: ChocoType::None })
             }
             // lists
             ast::Expression::ListLiteral(_) => todo!(),

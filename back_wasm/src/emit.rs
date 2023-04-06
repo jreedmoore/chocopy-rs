@@ -18,35 +18,34 @@ pub const FALSE: i64 = 0x0000_0000_0000_0002;
 pub const NONE: i64 = 0x0000_0000_0000_0001;
 pub const OBJ_TAG: i64 = 0x0000_0000_0000_0003;
 
-pub fn expression(e: &ast::Expression, _ctype: ChocoType) -> Vec<WASMInstr> {
+pub fn expression(e: &annotated_ast::Expression) -> Vec<WASMInstr> {
     match e {
-        ast::Expression::Lit(ast::Literal::True) => vec![WASMInstr::I64Const(TRUE), WASMInstr::Call("host_print".to_string())],
-        ast::Expression::Lit(ast::Literal::False) => vec![WASMInstr::I64Const(FALSE), WASMInstr::Call("host_print".to_string())],
-        ast::Expression::Lit(ast::Literal::None) => vec![WASMInstr::I64Const(NONE), WASMInstr::Call("host_print".to_string())],
-        ast::Expression::Lit(ast::Literal::Integer(i)) => vec![WASMInstr::I64Const((*i as i64) << 2), WASMInstr::Call("host_print".to_string())],
-        ast::Expression::Lit(_) => todo!(),
-        //
-        ast::Expression::Ternary { e, if_expr, else_expr } => todo!(),
-        ast::Expression::Id(_) => todo!(),
-        ast::Expression::Not(_) => todo!(),
-        ast::Expression::ListLiteral(_) => todo!(),
-        ast::Expression::Member(_) => todo!(),
-        ast::Expression::Index(_) => todo!(),
-        ast::Expression::MemberCall(_, _) => todo!(),
-        ast::Expression::Call(_, _) => todo!(),
-        ast::Expression::BinaryOp(_, _, _) => todo!(),
-        ast::Expression::UnaryMinus(_) => todo!(),
+        annotated_ast::Expression::Lit{ l: ast::Literal::True } => vec![WASMInstr::I64Const(TRUE)],
+        annotated_ast::Expression::Lit{ l: ast::Literal::False } => vec![WASMInstr::I64Const(FALSE)],
+        annotated_ast::Expression::Lit{ l: ast::Literal::None } => vec![WASMInstr::I64Const(NONE)],
+        annotated_ast::Expression::Lit{ l: ast::Literal::Integer(i) } => vec![WASMInstr::I64Const((*i as i64) << 2)],
+        annotated_ast::Expression::Call { f, params, choco_type } => {
+            let mut instrs = params.iter().flat_map(|p| expression(p)).collect::<Vec<_>>();
+            instrs.push(WASMInstr::Call(f.name.clone()));
+            instrs
+        }
+        annotated_ast::Expression::Lit{ l: _ } => todo!(),
+
+        annotated_ast::Expression::Binary { op, l, r, choco_type } => todo!(),
     }
 }
 
-pub fn prog(e: &ast::Program) -> WASMModule {
-    if let Some(ast::Statement::Expr(e)) = e.stmts.first() {
-        WASMModule {
-            imports: vec![WASMFunImport { name: vec!["host".to_string(), "print".to_string()], params: vec![WASMType::I64], return_type: None }],
-            funcs: vec![WASMFuncDef::new("entry", vec![], None, expression(e, ChocoType::Bool))]
+pub fn prog(p: &annotated_ast::Program) -> WASMModule {
+
+    let mut entry_instrs = vec![];
+    for stmt in &p.stmts {
+        match stmt {
+            annotated_ast::Statement::Expr(e) => entry_instrs.append(&mut expression(e)),
         }
-    } else {
-        panic!("Not a single expression program")
+    }
+    WASMModule {
+        imports: vec![WASMFunImport { name: vec!["host".to_string(), "print".to_string()], params: vec![WASMType::I64], return_type: None }],
+        funcs: vec![WASMFuncDef::new("entry", vec![], None, entry_instrs)]
     }
     
 }

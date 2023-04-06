@@ -20,7 +20,10 @@ fn main() {
 
     let prog = parser.parse().unwrap();
 
-    let wat = back_wasm::emit::prog(&prog).wat_print();
+    let typeck = front::type_check::TypeChecker::new();
+    let ann_prog = typeck.check_prog(&prog).unwrap();
+
+    let wat = back_wasm::emit::prog(&ann_prog).wat_print();
     println!("wat: {}", wat);
 
     let engine = Engine::default();
