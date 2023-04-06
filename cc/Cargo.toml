@@ -1,5 +1,5 @@
 [package]
-name = "entrypoint"
+name = "cc"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,3 +9,4 @@ edition = "2021"
 front = { path = "../front" }
 back_wasm = { path = "../back_wasm" }
 wasmtime = "7.0.0"
+anyhow = "1.0.70"

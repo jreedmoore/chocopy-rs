@@ -3,14 +3,22 @@ use itertools::Itertools;
 pub enum WASMInstr {
     I32Const(i32),
     I64Const(i64),
-    Call(String)
+    Call(String),
+    I64Add,
+    Drop,
+    I64Or,
+    I64Sub,
 }
 impl WATPrint for WASMInstr {
     fn wat_print(&self) -> String {
         match self {
             WASMInstr::I32Const(i) => format!("i32.const {}", i),
             WASMInstr::I64Const(i) => format!("i64.const {}", i),
-            WASMInstr::Call(name) => format!("call ${}", name)
+            WASMInstr::I64Add => format!("i64.add"),
+            WASMInstr::I64Sub => format!("i64.sub"),
+            WASMInstr::I64Or => format!("i64.or"),
+            WASMInstr::Call(name) => format!("call ${}", name),
+            WASMInstr::Drop => format!("drop"),
         }
     }
 }

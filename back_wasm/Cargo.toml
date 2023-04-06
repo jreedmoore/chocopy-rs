@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 front = { path = '../front' }
+middle = { path = '../middle' }
 itertools = "0.10.5"
