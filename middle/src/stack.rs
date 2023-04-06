@@ -15,6 +15,15 @@ pub enum Instr {
 
     Add,
     Sub,
+    Mul,
+    Modulo,
+    Div,
+
+    ArithShiftRight,
+    ShiftLeft,
+
+    BitAnd,
+    BitXor,
     BitOr,
 
     Call(String),

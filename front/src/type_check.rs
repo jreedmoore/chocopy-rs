@@ -48,7 +48,7 @@ impl TypeChecker {
         match e {
             ast::Expression::Not(b) => {
                 let b = TypeChecker::match_type(ChocoType::Bool, self.check_expression(b)?)?;
-                Ok(annotated_ast::Expression::Binary { op: ast::BinOp::Xor, l: Box::new(annotated_ast::Expression::Lit { l: ast::Literal::True }), r: Box::new(b), choco_type: ChocoType::Bool })
+                Ok(annotated_ast::Expression::Unary { op: annotated_ast::UnaryOp::LogicalNot, e: Box::new(b), choco_type: ChocoType::Bool })
             }
             ast::Expression::BinaryOp(op @ (ast::BinOp::And | ast::BinOp::Or), l, r) => {
                 let al = TypeChecker::match_type(ChocoType::Bool, self.check_expression(l)?)?;

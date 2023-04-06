@@ -125,11 +125,10 @@ pub struct IndexExpression {
     pub index: Box<Expression>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinOp {
     And,
     Or,
-    Xor, // not emitted by frontend, but used to simplify unary negation
     Plus,
     Minus,
     Multiply,

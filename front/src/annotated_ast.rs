@@ -14,6 +14,12 @@ pub enum Expression {
     Binary { op: ast::BinOp, l: Box<Expression>, r: Box<Expression>, choco_type: ChocoType },
     Call { f: FunId, params: Vec<Expression>, choco_type: ChocoType },
     Lit { l: ast::Literal },
+    Unary { op: UnaryOp, e: Box<Expression>, choco_type: ChocoType },
+}
+
+#[derive(Debug, Clone)]
+pub enum UnaryOp {
+    LogicalNot
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +41,7 @@ impl ChocoTyped for Expression {
             Expression::Lit { l: ast::Literal::Integer(_) } => ChocoType::Int,
             Expression::Lit { l: ast::Literal::None } => ChocoType::None,
             Expression::Lit { l: ast::Literal::Str(_) | ast::Literal::IdStr(_) } => ChocoType::Str,
+            Expression::Unary { choco_type, .. } => *choco_type,
         }
     }
 }

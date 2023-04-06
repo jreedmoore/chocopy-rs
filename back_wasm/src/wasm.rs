@@ -8,6 +8,13 @@ pub enum WASMInstr {
     Drop,
     I64Or,
     I64Sub,
+    I64And,
+    I64Xor,
+    I64Mul,
+    I64RemSigned,
+    I64DivSigned,
+    I64ShrSigned,
+    I64ShiftLeft,
 }
 impl WATPrint for WASMInstr {
     fn wat_print(&self) -> String {
@@ -19,6 +26,13 @@ impl WATPrint for WASMInstr {
             WASMInstr::I64Or => format!("i64.or"),
             WASMInstr::Call(name) => format!("call ${}", name),
             WASMInstr::Drop => format!("drop"),
+            WASMInstr::I64And => format!("i64.and"),
+            WASMInstr::I64Xor => format!("i64.xor"),
+            WASMInstr::I64Mul => format!("i64.mul"),
+            WASMInstr::I64RemSigned => format!("i64.rem_s"),
+            WASMInstr::I64DivSigned => format!("i64.div_s"),
+            WASMInstr::I64ShrSigned => format!("i64.shr_s"),
+            WASMInstr::I64ShiftLeft => format!("i64.shl")
         }
     }
 }
