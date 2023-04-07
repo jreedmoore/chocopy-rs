@@ -31,6 +31,9 @@ pub enum WASMInstr {
     If,
     Else,
     EndIf,
+
+    LocalGet(usize),
+    LocalSet(usize),
 }
 impl WATPrint for WASMInstr {
     fn wat_print(&self) -> String {
@@ -62,6 +65,8 @@ impl WATPrint for WASMInstr {
             WASMInstr::If => format!("(if (result i64) (then "),
             WASMInstr::Else => format!(") (else "),
             WASMInstr::EndIf => format!("))"),
+            WASMInstr::LocalGet(idx) => format!("local.get {}", idx),
+            WASMInstr::LocalSet(idx) => format!("local.set {}", idx),
         }
     }
 }
@@ -113,23 +118,28 @@ pub struct WASMFuncDef {
     name: String,
     params: Vec<WASMType>,
     return_type: Option<WASMType>,
+    locals: usize,
     instrs: Vec<WASMInstr>
 }
 impl WASMFuncDef {
-    pub fn new(name: &str, params: Vec<WASMType>, return_type: Option<WASMType>, instrs: Vec<WASMInstr>) -> WASMFuncDef {
-        WASMFuncDef { name: name.to_string(), params, return_type, instrs }
+    pub fn new(name: &str, params: Vec<WASMType>, return_type: Option<WASMType>, locals: usize, instrs: Vec<WASMInstr>) -> WASMFuncDef {
+        WASMFuncDef { name: name.to_string(), params, return_type, locals, instrs }
     }
 }
 impl WATPrint for WASMFuncDef {
-    fn wat_print(&self) -> String {
-        let params = 
-            if !self.params.is_empty() {
-                format!("(param {})", self.params.iter().map(|p| p.wat_print()).join(" "))
-            } else {
-                "".to_owned()
-            };
-        let ret = self.return_type.as_ref().map(|r| format!("(return {})", r.wat_print())).unwrap_or("".to_owned());
-        format!("(func (export \"{}\") {}{}{})", self.name, params, ret, self.instrs.iter().map(|i| i.wat_print()).join(" "))
+    fn wat_print_mut(&self, buf: &mut String) {
+        buf.push_str("(func (export \"");
+        buf.push_str(&self.name);
+        buf.push_str("\") ");
+        if self.locals > 0 {
+            buf.push_str("(local");
+            for _ in 1..=self.locals {
+                buf.push_str(" i64");
+            }
+            buf.push(')');
+        }
+        self.instrs.wat_print_mut(buf);
+        buf.push(')');
     }
 }
 
@@ -139,7 +149,15 @@ pub struct WASMModule {
 }
 
 pub trait WATPrint {
-    fn wat_print(&self) -> String;
+    fn wat_print(&self) -> String {
+        let mut buf = String::new();
+        self.wat_print_mut(&mut buf);
+        buf
+    }
+    fn wat_print_mut(&self, buf: &mut String) {
+        let s = self.wat_print();
+        buf.push_str(&s);
+    }
 }
 impl WATPrint for WASMModule {
     fn wat_print(&self) -> String {

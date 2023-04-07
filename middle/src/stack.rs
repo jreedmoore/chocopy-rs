@@ -7,11 +7,12 @@
 //   - We have a heap for dynamically sized data
 
 pub struct Program {
-    pub instrs: Vec<Instr>
+    pub instrs: Vec<Instr>,
+    pub locals: usize,
 }
 impl Program {
     pub fn new() -> Program {
-        Program { instrs: vec![] }
+        Program { instrs: vec![], locals: 0 }
     }
 }
 

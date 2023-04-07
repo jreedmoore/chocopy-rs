@@ -1,5 +1,7 @@
 // Lower from Annotated AST to Stack IR
 
+use std::collections::HashMap;
+
 use crate::{annotated_ast::{*, self}, ast, type_check::ChocoType};
 use middle::stack::{self, Instr};
 
@@ -20,14 +22,23 @@ pub const OBJ_TAG: i64 = 0x0000_0000_0000_0003;
 
 pub const TAG_BITS: usize = 2;
 
+pub struct Locals {
+    max_used: usize,
+    bindings: HashMap<String, usize>,
+}
+impl Locals {
+    pub fn new() -> Locals {
+        Locals { max_used: 0, bindings: HashMap::new() }
+    }
+}
 pub struct Lower {
-    lowered: stack::Program
+    lowered: stack::Program,
+    locals: Locals,
 }
 impl Lower {
     pub fn new() -> Lower {
-        Lower { lowered: stack::Program::new() }
+        Lower { lowered: stack::Program::new(), locals: Locals::new() }
     }
-
 
     fn push_instr(&mut self, instr: stack::Instr) {
         self.lowered.instrs.push(instr);
@@ -37,6 +48,7 @@ impl Lower {
         for stmt in &prog.stmts {
             self.lower_statement(&stmt);
         }
+        self.lowered.locals = self.locals.max_used;
         &self.lowered
     }
 
@@ -48,7 +60,14 @@ impl Lower {
                     self.lowered.instrs.push(stack::Instr::Drop)
                 }
             }
-            Statement::Assign(_, _) => todo!(),
+            Statement::Assign(Var::Local {name, ..}, e) => {
+                let index = self.upsert_local(name);
+                self.lower_expr(e);
+                if e.choco_type() == ChocoType::None {
+                    self.push_instr(Instr::NumConst(NONE))
+                }
+                self.push_instr(Instr::StoreLocal(index))
+            }
         } 
     }
 
@@ -107,8 +126,15 @@ impl Lower {
                 self.lower_expr(els);
                 self.push_instr(Instr::EndIf);
             },
-            Expression::Load { v } => todo!()
-
+            Expression::Load { v: Var::Local { name, .. } } => self.push_instr(Instr::LoadLocal(self.get_local(&name))),
         }
+    }
+
+    fn upsert_local(&mut self, name: &str) -> usize {
+        *self.locals.bindings.entry(name.to_owned()).or_insert_with(|| {let id = self.locals.max_used; self.locals.max_used += 1; id })
+    }
+
+    fn get_local(&self, name: &str) -> usize {
+        self.locals.bindings[name]
     }
 }

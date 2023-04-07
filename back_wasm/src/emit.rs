@@ -46,8 +46,8 @@ pub fn stack_to_wasm(instr: &stack::Instr) -> Vec<WASMInstr> {
         stack::Instr::Else => vec![WASMInstr::Else],
         stack::Instr::EndIf => vec![WASMInstr::EndIf],
 
-        stack::Instr::LoadLocal(_) => todo!(),
-        stack::Instr::StoreLocal(_) => todo!(),
+        stack::Instr::LoadLocal(idx) => vec![WASMInstr::LocalGet(*idx)],
+        stack::Instr::StoreLocal(idx) => vec![WASMInstr::LocalSet(*idx)],
     }
 }
 
@@ -59,7 +59,6 @@ pub fn prog(p: &stack::Program) -> WASMModule {
     
     WASMModule {
         imports: vec![WASMFunImport { name: vec!["host".to_string(), "print".to_string()], params: vec![WASMType::I64], return_type: None }],
-        funcs: vec![WASMFuncDef::new("entry", vec![], None, entry_instrs)]
+        funcs: vec![WASMFuncDef::new("entry", vec![], None, p.locals, entry_instrs)]
     }
-    
 }

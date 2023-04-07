@@ -5,7 +5,7 @@ fn assert_output(program: &str, expected_output: Vec<&str>) -> anyhow::Result<()
     let wat = compiler::produce_wat(program)?;
     let actual = runtime::run_with_mocked_io(&wat, &vec![])?;
 
-    assert_eq!(expected_output, actual, "in example: {}", program);
+    assert_eq!(expected_output, actual, "in example: {} with WAT: {}", program, wat);
 
     Ok(())
 }
@@ -31,5 +31,12 @@ fn test_exprs() -> anyhow::Result<()> {
     assert_output("print((1 > 2) or (1 < 2))", vec!["True"])?;
     assert_output("print((1 > 2))\nprint((1 < 2))", vec!["False", "True"])?;
     assert_output("print(1 if True else 2)", vec!["1"])?;
+    Ok(())
+}
+
+#[test]
+fn test_locals() -> anyhow::Result<()> {
+    assert_output("x: int = 1\nprint(x)", vec!["1"])?;
+    assert_output("x: bool = False\nprint(x)", vec!["False"])?;
     Ok(())
 }
