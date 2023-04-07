@@ -28,7 +28,7 @@ pub enum WASMInstr {
     I64Gt,
     I64Gte,
 
-    If,
+    If(bool),
     Else,
     EndIf,
 
@@ -62,7 +62,14 @@ impl WATPrint for WASMInstr {
             WASMInstr::I64Lte => format!("i64.le_s"),
             WASMInstr::I64Gt => format!("i64.gt_s"),
             WASMInstr::I64Gte => format!("i64.ge_s"),
-            WASMInstr::If => format!("(if (result i64) (then "),
+            WASMInstr::If(has_return) => {
+                let mut buf = "(if".to_string();
+                if *has_return {
+                   buf.push_str(" (result i64)")
+                }
+                buf.push_str("(then ");
+                buf
+            }
             WASMInstr::Else => format!(") (else "),
             WASMInstr::EndIf => format!("))"),
             WASMInstr::LocalGet(idx) => format!("local.get {}", idx),
@@ -160,7 +167,11 @@ pub trait WATPrint {
     }
 }
 impl WATPrint for WASMModule {
-    fn wat_print(&self) -> String {
-        format!("(module {} {})", self.imports.iter().map(|i| i.wat_print()).join(" "), self.funcs.iter().map(|f| f.wat_print()).join(" "))
+    fn wat_print_mut(&self, buf: &mut String) {
+        buf.push_str("(module ");
+        self.imports.wat_print_mut(buf);
+        buf.push(' ');
+        self.funcs.wat_print_mut(buf);
+        buf.push(')');
     }
 }

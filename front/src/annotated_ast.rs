@@ -8,6 +8,7 @@ pub struct Program {
 pub enum Statement {
     Expr(Expression),
     Assign(Var, Expression),
+    If { cond: Expression, then: Vec<Statement>, els: Vec<Statement> },
 }
 
 #[derive(Debug, Clone)]

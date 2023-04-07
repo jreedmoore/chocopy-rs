@@ -180,10 +180,40 @@ impl TypeChecker {
                     Err(TypeError::EmptyTargets)
                 }
             }
-            ast::Statement::If { main, elifs, otherwise } => todo!(),
+            ast::Statement::If { main, elifs, otherwise } => {
+                let cond = self.check_expression(&main.condition)?;
+                if cond.choco_type() != ChocoType::Bool {
+                    return Err(TypeError::TypeMismatch { expected: ChocoType::Bool, actual: cond.choco_type() })
+                }
+                let then = self.check_stmts(&main.then)?;
+                let mut els = if let Some(stmts) = otherwise {
+                    self.check_stmts(&stmts)?
+                } else {
+                    vec![]
+                };
+                for cond_block in elifs.iter().rev() {
+                    let cond = self.check_expression(&cond_block.condition)?;
+                    if cond.choco_type() != ChocoType::Bool {
+                        return Err(TypeError::TypeMismatch { expected: ChocoType::Bool, actual: cond.choco_type() })
+                    }
+                    let then = self.check_stmts(&cond_block.then)?;
+                    let nested = vec![annotated_ast::Statement::If { cond, then, els }];
+                    els = nested;
+                }
+
+                Ok(vec![annotated_ast::Statement::If { cond, then, els }])
+            }
             ast::Statement::While(_) => todo!(),
             ast::Statement::For { id, in_expr, block } => todo!(),
         }
+    }
+
+    pub fn check_stmts(&self, s: &[ast::Statement]) -> Result<Vec<annotated_ast::Statement>, TypeError> {
+        let mut stmts = vec![];
+        for stmt in s {
+            stmts.append(&mut self.check_stmt(stmt)?);
+        }
+        Ok(stmts)
     }
 
     fn resolve_type(&self, typ: &ast::Type) -> Result<ChocoType, TypeError> {
@@ -257,7 +287,7 @@ mod tests {
         if let Some(annotated_ast::Statement::Expr(e)) = ann_prog.stmts.last() {
             Ok(e.choco_type())
         } else {
-            panic!("Program did not end in expression")
+            Ok(ChocoType::None)
         }
     }
 
@@ -299,5 +329,12 @@ mod tests {
         assert_eq!(parse_and_type_check("x: int = 0\nx + 0").unwrap(), ChocoType::Int);
         assert_fails_type_check("x: bool = True\nx + 0");
         assert_fails_type_check("x: bool = 0\nx and True");
+    }
+
+    #[test]
+    fn test_control_flow() {
+        parse_and_type_check("if True:\n  print(1)\nelse:\n  print(2)").unwrap();
+        parse_and_type_check("if True:\n  1\nelif False:\n  2\nelse:\n  3").unwrap();
+        assert_fails_type_check("if 0:\n  print(1)");
     }
 }

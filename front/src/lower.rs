@@ -68,6 +68,16 @@ impl Lower {
                 }
                 self.push_instr(Instr::StoreLocal(index))
             }
+            Statement::If { cond, then, els } => {
+                self.lower_expr(cond);
+                self.push_instr(Instr::If(false));
+                then.iter().for_each(|s| self.lower_statement(s));
+                if !els.is_empty() {
+                    self.push_instr(Instr::Else);
+                    els.iter().for_each(|s| self.lower_statement(s));
+                }
+                self.push_instr(Instr::EndIf);
+            }
         } 
     }
 
@@ -120,7 +130,7 @@ impl Lower {
             }
             Expression::Ternary { cond, then, els, .. } => {
                 self.lower_expr(cond);
-                self.push_instr(Instr::If);
+                self.push_instr(Instr::If(true));
                 self.lower_expr(then);
                 self.push_instr(Instr::Else);
                 self.lower_expr(els);

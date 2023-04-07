@@ -44,7 +44,7 @@ pub enum Instr {
 
     Drop,
 
-    If,
+    If(bool),
     Else,
     EndIf,
 

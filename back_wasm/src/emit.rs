@@ -42,7 +42,7 @@ pub fn stack_to_wasm(instr: &stack::Instr) -> Vec<WASMInstr> {
         stack::Instr::Gt => vec![WASMInstr::I64Gt, WASMInstr::I64ExtendI32, WASMInstr::I64Const(1), WASMInstr::I64RotateRight, WASMInstr::I64Const(FALSE), WASMInstr::I64Or],
         stack::Instr::Gte => vec![WASMInstr::I64Gte, WASMInstr::I64ExtendI32, WASMInstr::I64Const(1), WASMInstr::I64RotateRight, WASMInstr::I64Const(FALSE), WASMInstr::I64Or],
 
-        stack::Instr::If => vec![WASMInstr::I64Const(1), WASMInstr::I64RotateLeft, WASMInstr::I32WrapI64, WASMInstr::If],
+        stack::Instr::If(b) => vec![WASMInstr::I64Const(1), WASMInstr::I64RotateLeft, WASMInstr::I64Const(1), WASMInstr::I64And, WASMInstr::I32WrapI64, WASMInstr::If(*b)],
         stack::Instr::Else => vec![WASMInstr::Else],
         stack::Instr::EndIf => vec![WASMInstr::EndIf],
 
