@@ -287,7 +287,17 @@ impl TypeChecker {
 
                 Ok(vec![annotated_ast::Statement::If { cond, then, els }])
             }
-            ast::Statement::While(_) => todo!(),
+            ast::Statement::While(cond_block) => {
+                let cond = self.check_expression(&cond_block.condition)?;
+                if cond.choco_type() != ChocoType::Bool {
+                    return Err(TypeError::TypeMismatch {
+                        expected: ChocoType::Bool,
+                        actual: cond.choco_type(),
+                    });
+                }
+                let stmts = self.check_stmts(&cond_block.then)?;
+                Ok(vec![annotated_ast::Statement::While { cond, stmts }])
+            }
             ast::Statement::For { id, in_expr, block } => todo!(),
         }
     }

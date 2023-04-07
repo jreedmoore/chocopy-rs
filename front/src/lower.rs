@@ -88,6 +88,16 @@ impl Lower {
                 }
                 self.push_instr(Instr::EndIf);
             }
+            Statement::While { cond, stmts } => {
+                self.lower_expr(cond);
+                self.push_instr(Instr::Loop);
+                stmts.iter().for_each(|s| self.lower_statement(s));
+                self.lower_expr(cond);
+                self.push_instr(Instr::NumConst(MSB));
+                self.push_instr(Instr::BitXor);
+                self.push_instr(Instr::BrIf);
+                self.push_instr(Instr::EndLoop);
+            }
         }
     }
 

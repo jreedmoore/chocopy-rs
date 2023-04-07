@@ -29,6 +29,7 @@ fn test_exprs() -> anyhow::Result<()> {
     assert_output("print(5 % 2)", vec!["1"])?;
     assert_output("print(1 < 2)", vec!["True"])?;
     assert_output("print(1 > 2)", vec!["False"])?;
+    assert_output("print(5 > 0)", vec!["True"])?;
     assert_output("print(1 == 2)", vec!["False"])?;
     assert_output("print(1 >= 1)", vec!["True"])?;
     assert_output("print(1 <= 1)", vec!["True"])?;
@@ -53,6 +54,15 @@ fn test_if() -> anyhow::Result<()> {
     assert_output(
         "if False:\n  print(1)\nelif True:\n  print(3)\nelse:\n  print(2)",
         vec!["3"],
+    )?;
+    Ok(())
+}
+
+#[test]
+fn test_loop() -> anyhow::Result<()> {
+    assert_output(
+        "x: int = 5\nwhile x > 0:\n  print(x)\n  x = x - 1",
+        vec!["5", "4", "3", "2", "1"],
     )?;
     Ok(())
 }

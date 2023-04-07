@@ -32,6 +32,10 @@ pub enum WASMInstr {
     Else,
     EndIf,
 
+    Loop,
+    EndLoop,
+    BrIf,
+
     LocalGet(usize),
     LocalSet(usize),
 }
@@ -74,6 +78,10 @@ impl WATPrint for WASMInstr {
             WASMInstr::EndIf => format!("))"),
             WASMInstr::LocalGet(idx) => format!("local.get {}", idx),
             WASMInstr::LocalSet(idx) => format!("local.set {}", idx),
+
+            WASMInstr::Loop => format!("(block (param i64) (loop (param i64) "),
+            WASMInstr::EndLoop => format!("))"),
+            WASMInstr::BrIf => format!("br_if 1 br 0"),
         }
     }
 }
@@ -161,7 +169,7 @@ impl WATPrint for WASMFuncDef {
             for _ in 1..=self.locals {
                 buf.push_str(" i64");
             }
-            buf.push(')');
+            buf.push_str(") ");
         }
         self.instrs.wat_print_mut(buf);
         buf.push(')');

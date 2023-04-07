@@ -19,6 +19,14 @@ pub const NONE: i64 = 0x0000_0000_0000_0001;
 pub const OBJ_TAG: i64 = 0x0000_0000_0000_0003;
 
 pub fn stack_to_wasm(instr: &stack::Instr) -> Vec<WASMInstr> {
+    let mut to_wasm_bool: Vec<WASMInstr> = vec![
+        WASMInstr::I64Const(1),
+        WASMInstr::I64RotateLeft,
+        WASMInstr::I64Const(1),
+        WASMInstr::I64And,
+        WASMInstr::I32WrapI64,
+    ];
+
     match instr {
         stack::Instr::NumConst(n) => vec![WASMInstr::I64Const(*n)],
         stack::Instr::Add => vec![WASMInstr::I64Add],
@@ -84,19 +92,21 @@ pub fn stack_to_wasm(instr: &stack::Instr) -> Vec<WASMInstr> {
             WASMInstr::I64Or,
         ],
 
-        stack::Instr::If(b) => vec![
-            WASMInstr::I64Const(1),
-            WASMInstr::I64RotateLeft,
-            WASMInstr::I64Const(1),
-            WASMInstr::I64And,
-            WASMInstr::I32WrapI64,
-            WASMInstr::If(*b),
-        ],
+        stack::Instr::If(b) => {
+            to_wasm_bool.push(WASMInstr::If(*b));
+            to_wasm_bool
+        }
         stack::Instr::Else => vec![WASMInstr::Else],
         stack::Instr::EndIf => vec![WASMInstr::EndIf],
 
         stack::Instr::LoadLocal(idx) => vec![WASMInstr::LocalGet(*idx)],
         stack::Instr::StoreLocal(idx) => vec![WASMInstr::LocalSet(*idx)],
+        stack::Instr::Loop => vec![WASMInstr::Loop],
+        stack::Instr::EndLoop => vec![WASMInstr::EndLoop],
+        stack::Instr::BrIf => {
+            to_wasm_bool.push(WASMInstr::BrIf);
+            to_wasm_bool
+        }
     }
 }
 

@@ -13,6 +13,10 @@ pub enum Statement {
         then: Vec<Statement>,
         els: Vec<Statement>,
     },
+    While {
+        cond: Expression,
+        stmts: Vec<Statement>,
+    },
 }
 
 #[derive(Debug, Clone)]
