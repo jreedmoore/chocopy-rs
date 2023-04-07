@@ -1,8 +1,8 @@
 // Code emissions for WebAssembly
 
+use crate::wasm::*;
 use itertools::Itertools;
 use middle::stack;
-use crate::wasm::*;
 
 #[derive(Debug, PartialEq)]
 #[repr(u8)]
@@ -10,7 +10,7 @@ pub enum TypeTag {
     Int = 0,
     None = 1,
     Bool = 2,
-    Object = 3
+    Object = 3,
 }
 
 pub const TRUE: i64 = 0x1000_0000_0000_0002;
@@ -35,14 +35,63 @@ pub fn stack_to_wasm(instr: &stack::Instr) -> Vec<WASMInstr> {
         stack::Instr::ShiftLeft => vec![WASMInstr::I64ShiftLeft],
 
         // WASM comparisons produce an i32 bool as a result, so we map into i64, rotate into LSB into MSB, and mask on TAG
-        stack::Instr::Eq => vec![WASMInstr::I64Eq, WASMInstr::I64ExtendI32, WASMInstr::I64Const(1), WASMInstr::I64RotateRight, WASMInstr::I64Const(FALSE), WASMInstr::I64Or],
-        stack::Instr::Ne => vec![WASMInstr::I64Ne, WASMInstr::I64ExtendI32, WASMInstr::I64Const(1), WASMInstr::I64RotateRight, WASMInstr::I64Const(FALSE), WASMInstr::I64Or],
-        stack::Instr::Lt => vec![WASMInstr::I64Lt, WASMInstr::I64ExtendI32, WASMInstr::I64Const(1), WASMInstr::I64RotateRight, WASMInstr::I64Const(FALSE), WASMInstr::I64Or],
-        stack::Instr::Lte => vec![WASMInstr::I64Lte, WASMInstr::I64ExtendI32, WASMInstr::I64Const(1), WASMInstr::I64RotateRight, WASMInstr::I64Const(FALSE), WASMInstr::I64Or],
-        stack::Instr::Gt => vec![WASMInstr::I64Gt, WASMInstr::I64ExtendI32, WASMInstr::I64Const(1), WASMInstr::I64RotateRight, WASMInstr::I64Const(FALSE), WASMInstr::I64Or],
-        stack::Instr::Gte => vec![WASMInstr::I64Gte, WASMInstr::I64ExtendI32, WASMInstr::I64Const(1), WASMInstr::I64RotateRight, WASMInstr::I64Const(FALSE), WASMInstr::I64Or],
+        stack::Instr::Eq => vec![
+            WASMInstr::I64Eq,
+            WASMInstr::I64ExtendI32,
+            WASMInstr::I64Const(1),
+            WASMInstr::I64RotateRight,
+            WASMInstr::I64Const(FALSE),
+            WASMInstr::I64Or,
+        ],
+        stack::Instr::Ne => vec![
+            WASMInstr::I64Ne,
+            WASMInstr::I64ExtendI32,
+            WASMInstr::I64Const(1),
+            WASMInstr::I64RotateRight,
+            WASMInstr::I64Const(FALSE),
+            WASMInstr::I64Or,
+        ],
+        stack::Instr::Lt => vec![
+            WASMInstr::I64Lt,
+            WASMInstr::I64ExtendI32,
+            WASMInstr::I64Const(1),
+            WASMInstr::I64RotateRight,
+            WASMInstr::I64Const(FALSE),
+            WASMInstr::I64Or,
+        ],
+        stack::Instr::Lte => vec![
+            WASMInstr::I64Lte,
+            WASMInstr::I64ExtendI32,
+            WASMInstr::I64Const(1),
+            WASMInstr::I64RotateRight,
+            WASMInstr::I64Const(FALSE),
+            WASMInstr::I64Or,
+        ],
+        stack::Instr::Gt => vec![
+            WASMInstr::I64Gt,
+            WASMInstr::I64ExtendI32,
+            WASMInstr::I64Const(1),
+            WASMInstr::I64RotateRight,
+            WASMInstr::I64Const(FALSE),
+            WASMInstr::I64Or,
+        ],
+        stack::Instr::Gte => vec![
+            WASMInstr::I64Gte,
+            WASMInstr::I64ExtendI32,
+            WASMInstr::I64Const(1),
+            WASMInstr::I64RotateRight,
+            WASMInstr::I64Const(FALSE),
+            WASMInstr::I64Or,
+        ],
 
-        stack::Instr::If(b) => vec![WASMInstr::I64Const(1), WASMInstr::I64RotateLeft, WASMInstr::I64Const(1), WASMInstr::I64And, WASMInstr::I32WrapI64, WASMInstr::If(*b)],
+        stack::Instr::If(b) => vec![
+            WASMInstr::I64Const(1),
+            WASMInstr::I64RotateLeft,
+            WASMInstr::I64Const(1),
+            WASMInstr::I64And,
+            WASMInstr::I32WrapI64,
+            WASMInstr::If(*b),
+        ],
         stack::Instr::Else => vec![WASMInstr::Else],
         stack::Instr::EndIf => vec![WASMInstr::EndIf],
 
@@ -52,13 +101,24 @@ pub fn stack_to_wasm(instr: &stack::Instr) -> Vec<WASMInstr> {
 }
 
 pub fn prog(p: &stack::Program) -> WASMModule {
+    let entry_instrs = p
+        .instrs
+        .iter()
+        .flat_map(|instr| stack_to_wasm(instr))
+        .collect_vec();
 
-    let entry_instrs = p.instrs.iter().flat_map(|instr| {
-        stack_to_wasm(instr) 
-    }).collect_vec();
-    
     WASMModule {
-        imports: vec![WASMFunImport { name: vec!["host".to_string(), "print".to_string()], params: vec![WASMType::I64], return_type: None }],
-        funcs: vec![WASMFuncDef::new("entry", vec![], None, p.locals, entry_instrs)]
+        imports: vec![WASMFunImport {
+            name: vec!["host".to_string(), "print".to_string()],
+            params: vec![WASMType::I64],
+            return_type: None,
+        }],
+        funcs: vec![WASMFuncDef::new(
+            "entry",
+            vec![],
+            None,
+            p.locals,
+            entry_instrs,
+        )],
     }
 }

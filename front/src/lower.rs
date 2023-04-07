@@ -2,7 +2,11 @@
 
 use std::collections::HashMap;
 
-use crate::{annotated_ast::{*, self}, ast, type_check::ChocoType};
+use crate::{
+    annotated_ast::{self, *},
+    ast,
+    type_check::ChocoType,
+};
 use middle::stack::{self, Instr};
 
 #[derive(Debug, PartialEq)]
@@ -11,7 +15,7 @@ pub enum TypeTag {
     Int = 0,
     None = 1,
     Bool = 2,
-    Object = 3
+    Object = 3,
 }
 
 pub const MSB: i64 = (0x8000_0000_0000_0000 as u64) as i64;
@@ -28,7 +32,10 @@ pub struct Locals {
 }
 impl Locals {
     pub fn new() -> Locals {
-        Locals { max_used: 0, bindings: HashMap::new() }
+        Locals {
+            max_used: 0,
+            bindings: HashMap::new(),
+        }
     }
 }
 pub struct Lower {
@@ -37,7 +44,10 @@ pub struct Lower {
 }
 impl Lower {
     pub fn new() -> Lower {
-        Lower { lowered: stack::Program::new(), locals: Locals::new() }
+        Lower {
+            lowered: stack::Program::new(),
+            locals: Locals::new(),
+        }
     }
 
     fn push_instr(&mut self, instr: stack::Instr) {
@@ -60,7 +70,7 @@ impl Lower {
                     self.lowered.instrs.push(stack::Instr::Drop)
                 }
             }
-            Statement::Assign(Var::Local {name, ..}, e) => {
+            Statement::Assign(Var::Local { name, .. }, e) => {
                 let index = self.upsert_local(name);
                 self.lower_expr(e);
                 if e.choco_type() == ChocoType::None {
@@ -78,17 +88,29 @@ impl Lower {
                 }
                 self.push_instr(Instr::EndIf);
             }
-        } 
+        }
     }
 
     fn lower_expr(&mut self, e: &Expression) {
         match e {
-            Expression::Lit { l: ast::Literal::True } => self.push_instr(Instr::NumConst(TRUE)),
-            Expression::Lit { l: ast::Literal::False } => self.push_instr(Instr::NumConst(FALSE)),
-            Expression::Lit { l: ast::Literal::Integer(i) } => self.push_instr(Instr::NumConst((*i as i64) << TAG_BITS)),
-            Expression::Lit { l: ast::Literal::None } => self.push_instr(Instr::NumConst(NONE)),
+            Expression::Lit {
+                l: ast::Literal::True,
+            } => self.push_instr(Instr::NumConst(TRUE)),
+            Expression::Lit {
+                l: ast::Literal::False,
+            } => self.push_instr(Instr::NumConst(FALSE)),
+            Expression::Lit {
+                l: ast::Literal::Integer(i),
+            } => self.push_instr(Instr::NumConst((*i as i64) << TAG_BITS)),
+            Expression::Lit {
+                l: ast::Literal::None,
+            } => self.push_instr(Instr::NumConst(NONE)),
             Expression::Lit { l: _ } => todo!(), // strings
-            Expression::Unary { op: annotated_ast::UnaryOp::LogicalNot, e, .. } => {
+            Expression::Unary {
+                op: annotated_ast::UnaryOp::LogicalNot,
+                e,
+                ..
+            } => {
                 self.lower_expr(e);
                 self.push_instr(Instr::NumConst(MSB));
                 self.push_instr(Instr::BitXor);
@@ -128,20 +150,32 @@ impl Lower {
                 params.iter().for_each(|p| self.lower_expr(p));
                 self.push_instr(Instr::Call(f.name.clone()))
             }
-            Expression::Ternary { cond, then, els, .. } => {
+            Expression::Ternary {
+                cond, then, els, ..
+            } => {
                 self.lower_expr(cond);
                 self.push_instr(Instr::If(true));
                 self.lower_expr(then);
                 self.push_instr(Instr::Else);
                 self.lower_expr(els);
                 self.push_instr(Instr::EndIf);
-            },
-            Expression::Load { v: Var::Local { name, .. } } => self.push_instr(Instr::LoadLocal(self.get_local(&name))),
+            }
+            Expression::Load {
+                v: Var::Local { name, .. },
+            } => self.push_instr(Instr::LoadLocal(self.get_local(&name))),
         }
     }
 
     fn upsert_local(&mut self, name: &str) -> usize {
-        *self.locals.bindings.entry(name.to_owned()).or_insert_with(|| {let id = self.locals.max_used; self.locals.max_used += 1; id })
+        *self
+            .locals
+            .bindings
+            .entry(name.to_owned())
+            .or_insert_with(|| {
+                let id = self.locals.max_used;
+                self.locals.max_used += 1;
+                id
+            })
     }
 
     fn get_local(&self, name: &str) -> usize {

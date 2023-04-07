@@ -1,7 +1,7 @@
-use front::lexer::Lexer;
-use front::parser::Parser;
-use front::lower::Lower;
 use back_wasm::wasm::WATPrint;
+use front::lexer::Lexer;
+use front::lower::Lower;
+use front::parser::Parser;
 
 pub fn produce_wat(input: &str) -> anyhow::Result<String> {
     let lexer = Lexer::new(&input);

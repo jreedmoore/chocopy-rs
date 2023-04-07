@@ -12,7 +12,10 @@ pub struct Program {
 }
 impl Program {
     pub fn new() -> Program {
-        Program { instrs: vec![], locals: 0 }
+        Program {
+            instrs: vec![],
+            locals: 0,
+        }
     }
 }
 

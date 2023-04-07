@@ -16,7 +16,7 @@ fn test_lexer_on_examples() -> Result<(), Box<dyn Error>> {
 
         match p.parse() {
             Ok(_) => (),
-            Err(e) => panic!("Failed to parse {}: {:?}", path.display(), e)
+            Err(e) => panic!("Failed to parse {}: {:?}", path.display(), e),
         };
     }
     Ok(())

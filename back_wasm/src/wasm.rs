@@ -65,7 +65,7 @@ impl WATPrint for WASMInstr {
             WASMInstr::If(has_return) => {
                 let mut buf = "(if".to_string();
                 if *has_return {
-                   buf.push_str(" (result i64)")
+                    buf.push_str(" (result i64)")
                 }
                 buf.push_str("(then ");
                 buf
@@ -88,7 +88,7 @@ pub enum WASMType {
     I32,
     I64,
     F32,
-    F64
+    F64,
 }
 impl WATPrint for WASMType {
     fn wat_print(&self) -> String {
@@ -110,14 +110,20 @@ impl WATPrint for WASMFunImport {
     fn wat_print(&self) -> String {
         let quoted_name = self.name.iter().map(|s| format!("\"{}\"", s)).join(" ");
         let snake_case_name = self.name.iter().join("_");
-        let params = 
-            if !self.params.is_empty() {
-                format!("(param {})", self.params.wat_print())
-            } else {
-                "".to_owned()
-            };
-        let ret = self.return_type.as_ref().map(|r| format!("(return {})", r.wat_print())).unwrap_or("".to_owned());
-        format!("(import {} (func ${} {}{}))", quoted_name, snake_case_name, params, ret)
+        let params = if !self.params.is_empty() {
+            format!("(param {})", self.params.wat_print())
+        } else {
+            "".to_owned()
+        };
+        let ret = self
+            .return_type
+            .as_ref()
+            .map(|r| format!("(return {})", r.wat_print()))
+            .unwrap_or("".to_owned());
+        format!(
+            "(import {} (func ${} {}{}))",
+            quoted_name, snake_case_name, params, ret
+        )
     }
 }
 
@@ -126,11 +132,23 @@ pub struct WASMFuncDef {
     params: Vec<WASMType>,
     return_type: Option<WASMType>,
     locals: usize,
-    instrs: Vec<WASMInstr>
+    instrs: Vec<WASMInstr>,
 }
 impl WASMFuncDef {
-    pub fn new(name: &str, params: Vec<WASMType>, return_type: Option<WASMType>, locals: usize, instrs: Vec<WASMInstr>) -> WASMFuncDef {
-        WASMFuncDef { name: name.to_string(), params, return_type, locals, instrs }
+    pub fn new(
+        name: &str,
+        params: Vec<WASMType>,
+        return_type: Option<WASMType>,
+        locals: usize,
+        instrs: Vec<WASMInstr>,
+    ) -> WASMFuncDef {
+        WASMFuncDef {
+            name: name.to_string(),
+            params,
+            return_type,
+            locals,
+            instrs,
+        }
     }
 }
 impl WATPrint for WASMFuncDef {
@@ -152,7 +170,7 @@ impl WATPrint for WASMFuncDef {
 
 pub struct WASMModule {
     pub imports: Vec<WASMFunImport>,
-    pub funcs: Vec<WASMFuncDef>, 
+    pub funcs: Vec<WASMFuncDef>,
 }
 
 pub trait WATPrint {

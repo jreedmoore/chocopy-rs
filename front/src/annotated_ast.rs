@@ -1,24 +1,50 @@
-use crate::{type_check::ChocoType, ast};
+use crate::{ast, type_check::ChocoType};
 
 pub struct Program {
-    pub stmts: Vec<Statement>
+    pub stmts: Vec<Statement>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Statement {
     Expr(Expression),
     Assign(Var, Expression),
-    If { cond: Expression, then: Vec<Statement>, els: Vec<Statement> },
+    If {
+        cond: Expression,
+        then: Vec<Statement>,
+        els: Vec<Statement>,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub enum Expression {
-    Binary { op: ast::BinOp, l: Box<Expression>, r: Box<Expression>, choco_type: ChocoType },
-    Call { f: FunId, params: Vec<Expression>, choco_type: ChocoType },
-    Lit { l: ast::Literal },
-    Unary { op: UnaryOp, e: Box<Expression>, choco_type: ChocoType },
-    Ternary { cond: Box<Expression>, then: Box<Expression>, els: Box<Expression>, choco_type: ChocoType },
-    Load { v: Var }
+    Binary {
+        op: ast::BinOp,
+        l: Box<Expression>,
+        r: Box<Expression>,
+        choco_type: ChocoType,
+    },
+    Call {
+        f: FunId,
+        params: Vec<Expression>,
+        choco_type: ChocoType,
+    },
+    Lit {
+        l: ast::Literal,
+    },
+    Unary {
+        op: UnaryOp,
+        e: Box<Expression>,
+        choco_type: ChocoType,
+    },
+    Ternary {
+        cond: Box<Expression>,
+        then: Box<Expression>,
+        els: Box<Expression>,
+        choco_type: ChocoType,
+    },
+    Load {
+        v: Var,
+    },
 }
 impl ChocoTyped for Expression {
     fn choco_type(&self) -> ChocoType {
@@ -35,32 +61,32 @@ impl ChocoTyped for Expression {
 impl ChocoTyped for ast::Literal {
     fn choco_type(&self) -> ChocoType {
         match self {
-            ast::Literal::True | ast::Literal::False  => ChocoType::Bool,
-            ast::Literal::Integer(_)  => ChocoType::Int,
-            ast::Literal::None  => ChocoType::None,
-            ast::Literal::Str(_) | ast::Literal::IdStr(_)  => ChocoType::Str,
+            ast::Literal::True | ast::Literal::False => ChocoType::Bool,
+            ast::Literal::Integer(_) => ChocoType::Int,
+            ast::Literal::None => ChocoType::None,
+            ast::Literal::Str(_) | ast::Literal::IdStr(_) => ChocoType::Str,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum UnaryOp {
-    LogicalNot
+    LogicalNot,
 }
 
 #[derive(Debug, Clone)]
 pub struct FunId {
-    pub name: String
+    pub name: String,
 }
 
 #[derive(Debug, Clone)]
 pub enum Var {
-    Local { name: String, choco_type: ChocoType }
+    Local { name: String, choco_type: ChocoType },
 }
 impl ChocoTyped for Var {
     fn choco_type(&self) -> ChocoType {
         match self {
-            Var::Local { choco_type, .. } => *choco_type
+            Var::Local { choco_type, .. } => *choco_type,
         }
     }
 }

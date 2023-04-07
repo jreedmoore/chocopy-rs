@@ -5,7 +5,11 @@ fn assert_output(program: &str, expected_output: Vec<&str>) -> anyhow::Result<()
     let wat = compiler::produce_wat(program)?;
     let actual = runtime::run_with_mocked_io(&wat, &vec![])?;
 
-    assert_eq!(expected_output, actual, "in example: {} with WAT: {}", program, wat);
+    assert_eq!(
+        expected_output, actual,
+        "in example: {} with WAT: {}",
+        program, wat
+    );
 
     Ok(())
 }
@@ -46,6 +50,9 @@ fn test_locals() -> anyhow::Result<()> {
 fn test_if() -> anyhow::Result<()> {
     assert_output("if True:\n  print(1)", vec!["1"])?;
     assert_output("if False:\n  print(1)\nelse:\n  print(2)", vec!["2"])?;
-    assert_output("if False:\n  print(1)\nelif True:\n  print(3)\nelse:\n  print(2)", vec!["3"])?;
+    assert_output(
+        "if False:\n  print(1)\nelif True:\n  print(3)\nelse:\n  print(2)",
+        vec!["3"],
+    )?;
     Ok(())
 }
