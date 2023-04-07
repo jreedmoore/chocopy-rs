@@ -45,6 +45,9 @@ pub fn stack_to_wasm(instr: &stack::Instr) -> Vec<WASMInstr> {
         stack::Instr::If => vec![WASMInstr::I64Const(1), WASMInstr::I64RotateLeft, WASMInstr::I32WrapI64, WASMInstr::If],
         stack::Instr::Else => vec![WASMInstr::Else],
         stack::Instr::EndIf => vec![WASMInstr::EndIf],
+
+        stack::Instr::LoadLocal(_) => todo!(),
+        stack::Instr::StoreLocal(_) => todo!(),
     }
 }
 

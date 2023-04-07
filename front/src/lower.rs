@@ -48,6 +48,7 @@ impl Lower {
                     self.lowered.instrs.push(stack::Instr::Drop)
                 }
             }
+            Statement::Assign(_, _) => todo!(),
         } 
     }
 
@@ -105,7 +106,8 @@ impl Lower {
                 self.push_instr(Instr::Else);
                 self.lower_expr(els);
                 self.push_instr(Instr::EndIf);
-            }
+            },
+            Expression::Load { v } => todo!()
 
         }
     }

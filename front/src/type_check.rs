@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use crate::ast::{Type, Identifier};
 use crate::{ast, annotated_ast};
 use crate::annotated_ast::{ChocoTyped, Expression};
 
@@ -11,7 +14,11 @@ pub enum ChocoType {
 
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
-    TypeMismatch { expected: ChocoType, actual: ChocoType }
+    TypeMismatch { expected: ChocoType, actual: ChocoType },
+    Todo,
+    NotBound(String),
+    EmptyTargets,
+    CannotRebindLocal(String),
 }
 impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -28,12 +35,21 @@ impl std::error::Error for TypeError {
     }
 }
 
-pub struct TypeChecker {
+struct TypeEnvironment {
+    bindings: HashMap<String, annotated_ast::Var>
+}
+impl TypeEnvironment {
+    pub fn new() -> TypeEnvironment {
+        TypeEnvironment { bindings: HashMap::new() }
+    }
+}
 
+pub struct TypeChecker {
+    environments: Vec<TypeEnvironment>
 }
 impl TypeChecker {
     pub fn new() -> TypeChecker {
-        TypeChecker {  }
+        TypeChecker { environments: vec![TypeEnvironment::new()] }
     }
 
     fn match_type<C: ChocoTyped>(expected: ChocoType, actual: C) -> Result<C, TypeError> {
@@ -120,7 +136,7 @@ impl TypeChecker {
             ast::Expression::ListLiteral(_) => todo!(),
 
             // require environment
-            ast::Expression::Id(_) => todo!(),
+            ast::Expression::Id(id) => self.get_local(&id.name).map(|v| annotated_ast::Expression::Load { v: v.clone() }),
             ast::Expression::Member(_) => todo!(),
             ast::Expression::Index(_) => todo!(),
             ast::Expression::MemberCall(_, _) => todo!(),
@@ -136,24 +152,91 @@ impl TypeChecker {
         Ok(ann_es)
     }
 
-    pub fn check_stmt(&self, p: &ast::Statement) -> Result<annotated_ast::Statement, TypeError> {
+    pub fn resolve_target(&self, t: &ast::Target) -> Result<&annotated_ast::Var, TypeError> {
+        match t {
+            ast::Target::Id(name) => self.get_local(&name.name),
+            ast::Target::Member(_) => Err(TypeError::Todo),
+            ast::Target::Index(_) => Err(TypeError::Todo),
+        }
+    }
+
+    pub fn check_stmt(&self, p: &ast::Statement) -> Result<Vec<annotated_ast::Statement>, TypeError> {
         match p {
-            ast::Statement::Expr(e) => Ok(annotated_ast::Statement::Expr(self.check_expression(e)?)),
+            ast::Statement::Expr(e) => Ok(vec![annotated_ast::Statement::Expr(self.check_expression(e)?)]),
             ast::Statement::Pass => todo!(),
             ast::Statement::Return(_) => todo!(),
-            ast::Statement::Assign { targets, expr } => todo!(),
+            ast::Statement::Assign { targets, expr } => {
+                let e = self.check_expression(expr)?;
+                let mut stmts = vec![];
+                if let Some(fst) = targets.first() {
+                    let var = self.resolve_target(fst)?;
+                    stmts.push(annotated_ast::Statement::Assign(var.clone(), e));
+                    for target in targets.iter().skip(1) {
+                        let next_var = self.resolve_target(target)?;
+                        stmts.push(annotated_ast::Statement::Assign(next_var.clone(), annotated_ast::Expression::Load { v: var.clone() }))
+                    }
+                    Ok(stmts)
+                } else {
+                    Err(TypeError::EmptyTargets)
+                }
+            }
             ast::Statement::If { main, elifs, otherwise } => todo!(),
             ast::Statement::While(_) => todo!(),
             ast::Statement::For { id, in_expr, block } => todo!(),
         }
     }
 
-    pub fn check_prog(&self, p: &ast::Program) -> Result<annotated_ast::Program, TypeError> {
+    fn resolve_type(&self, typ: &ast::Type) -> Result<ChocoType, TypeError> {
+        match typ {
+            Type::Id(id) => 
+            match id.name.as_str() {
+                "bool" => Ok(ChocoType::Bool),
+                "int" => Ok(ChocoType::Int),
+                _ => Err(TypeError::Todo)
+            }
+            Type::List(_) => todo!(),
+        }
+    }
+
+    fn check_def(&mut self, def: &ast::Definition) -> Result<Vec<annotated_ast::Statement>, TypeError> {
+        match def {
+            ast::Definition::Var(def) => {
+                let bound_type = self.resolve_type(&def.var.typ)?;
+                let init = def.literal.choco_type();
+                if bound_type != init {
+                    return Err(TypeError::TypeMismatch { expected: bound_type, actual: init })
+                }
+                let v = self.add_local(def.var.id.name.clone(), bound_type)?.clone();
+                Ok(vec![annotated_ast::Statement::Assign(v, annotated_ast::Expression::Lit { l: def.literal.clone() })])
+            }
+            ast::Definition::Func(_) => todo!(),
+            ast::Definition::Class(_) => todo!(),
+        }
+    }
+
+    pub fn check_prog(&mut self, p: &ast::Program) -> Result<annotated_ast::Program, TypeError> {
         let mut stmts = vec![];
+        for def in &p.defs {
+            stmts.append(&mut self.check_def(def)?);
+        }
         for stmt in &p.stmts {
-            stmts.push(self.check_stmt(&stmt)?)
+            stmts.append(&mut self.check_stmt(&stmt)?)
         }
         Ok(annotated_ast::Program { stmts })
+    }
+
+    fn get_local(&self, name: &str) -> Result<&annotated_ast::Var, TypeError> {
+        self.environments.last().unwrap().bindings.get(name).ok_or(TypeError::NotBound(name.to_owned()))
+    }
+
+    fn add_local(&mut self, name: String, choco_type: ChocoType) -> Result<&annotated_ast::Var, TypeError> {
+        if self.environments.last().unwrap().bindings.contains_key(&name) {
+            Err(TypeError::CannotRebindLocal(name.clone()))
+        } else {
+            let v = annotated_ast::Var::Local { name: name.clone(), choco_type };
+            self.environments.last_mut().unwrap().bindings.insert(name.clone(), v);
+            Ok(self.environments.last().unwrap().bindings.get(&name).unwrap())
+        }
     }
 }
 
@@ -161,7 +244,7 @@ impl TypeChecker {
 mod tests {
     use std::error::Error;
 
-    use crate::{parser::Parser, lexer::Lexer, ast, annotated_ast::{ChocoTyped, self}};
+    use crate::{parser::Parser, lexer::Lexer, annotated_ast::{ChocoTyped, self}};
 
     use super::{TypeChecker, ChocoType};
 
@@ -169,12 +252,12 @@ mod tests {
         let mut p = Parser::new(Lexer::new(input));
         let prog = p.parse()?;
 
-        let typeck = TypeChecker::new();
+        let mut typeck = TypeChecker::new();
         let ann_prog = typeck.check_prog(&prog)?;
-        if let Some(annotated_ast::Statement::Expr(e)) = ann_prog.stmts.first() {
+        if let Some(annotated_ast::Statement::Expr(e)) = ann_prog.stmts.last() {
             Ok(e.choco_type())
         } else {
-            panic!("Not an expression program")
+            panic!("Program did not end in expression")
         }
     }
 
@@ -198,14 +281,23 @@ mod tests {
         assert_eq!(parse_and_type_check("1 > 2").unwrap(), ChocoType::Bool);
         assert_eq!(parse_and_type_check("1 == 2").unwrap(), ChocoType::Bool);
         assert_eq!(parse_and_type_check("True == False").unwrap(), ChocoType::Bool);
-        // todo: assert_eq!(parse_and_type_check("1 if True else 2").unwrap(), ChocoType::Int);
-        // todo: assert_eq!(parse_and_type_check("False if True else True").unwrap(), ChocoType::Bool);
-        // todo: assert_eq!(parse_and_type_check("\"foo\" if True else \"bar\"").unwrap(), ChocoType::Str);
-        // todo: assert_eq!(parse_and_type_check("1 if True else None").unwrap(), ChocoType::Int);
+        assert_eq!(parse_and_type_check("1 if True else 2").unwrap(), ChocoType::Int);
+        assert_eq!(parse_and_type_check("False if True else True").unwrap(), ChocoType::Bool);
+        assert_eq!(parse_and_type_check("\"foo\" if True else \"bar\"").unwrap(), ChocoType::Str);
+        //todo: assignability assert_eq!(parse_and_type_check("1 if True else None").unwrap(), ChocoType::Int);
         assert_fails_type_check("1 if True else False");
         assert_fails_type_check("1 if 2 else 3");
         assert_fails_type_check("True + True");
         assert_fails_type_check("1 and 2");
         assert_fails_type_check("(1 + 2) and 3");
+    }
+
+    #[test]
+    fn test_locals() {
+        assert_eq!(parse_and_type_check("x: bool = False\nx").unwrap(), ChocoType::Bool);
+        assert_eq!(parse_and_type_check("x: bool = False\nx and True").unwrap(), ChocoType::Bool);
+        assert_eq!(parse_and_type_check("x: int = 0\nx + 0").unwrap(), ChocoType::Int);
+        assert_fails_type_check("x: bool = True\nx + 0");
+        assert_fails_type_check("x: bool = 0\nx and True");
     }
 }

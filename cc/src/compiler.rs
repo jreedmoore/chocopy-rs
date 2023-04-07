@@ -9,7 +9,7 @@ pub fn produce_wat(input: &str) -> anyhow::Result<String> {
 
     let prog = parser.parse()?;
 
-    let typeck = front::type_check::TypeChecker::new();
+    let mut typeck = front::type_check::TypeChecker::new();
     let ann_prog = typeck.check_prog(&prog)?;
 
     let mut lower = Lower::new();

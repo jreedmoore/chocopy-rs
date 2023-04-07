@@ -6,7 +6,8 @@ pub struct Program {
 
 #[derive(Debug, Clone)]
 pub enum Statement {
-    Expr(Expression)
+    Expr(Expression),
+    Assign(Var, Expression),
 }
 
 #[derive(Debug, Clone)]
@@ -15,7 +16,30 @@ pub enum Expression {
     Call { f: FunId, params: Vec<Expression>, choco_type: ChocoType },
     Lit { l: ast::Literal },
     Unary { op: UnaryOp, e: Box<Expression>, choco_type: ChocoType },
-    Ternary { cond: Box<Expression>, then: Box<Expression>, els: Box<Expression>, choco_type: ChocoType }
+    Ternary { cond: Box<Expression>, then: Box<Expression>, els: Box<Expression>, choco_type: ChocoType },
+    Load { v: Var }
+}
+impl ChocoTyped for Expression {
+    fn choco_type(&self) -> ChocoType {
+        match self {
+            Expression::Binary { choco_type, .. } => *choco_type,
+            Expression::Call { choco_type, .. } => *choco_type,
+            Expression::Lit { l } => l.choco_type(),
+            Expression::Unary { choco_type, .. } => *choco_type,
+            Expression::Ternary { choco_type, .. } => *choco_type,
+            Expression::Load { v } => v.choco_type(),
+        }
+    }
+}
+impl ChocoTyped for ast::Literal {
+    fn choco_type(&self) -> ChocoType {
+        match self {
+            ast::Literal::True | ast::Literal::False  => ChocoType::Bool,
+            ast::Literal::Integer(_)  => ChocoType::Int,
+            ast::Literal::None  => ChocoType::None,
+            ast::Literal::Str(_) | ast::Literal::IdStr(_)  => ChocoType::Str,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -28,22 +52,18 @@ pub struct FunId {
     pub name: String
 }
 
-pub(crate) trait ChocoTyped {
-    fn choco_type(&self) -> ChocoType;
+#[derive(Debug, Clone)]
+pub enum Var {
+    Local { name: String, choco_type: ChocoType }
 }
-
-impl ChocoTyped for Expression {
+impl ChocoTyped for Var {
     fn choco_type(&self) -> ChocoType {
         match self {
-            Expression::Binary { choco_type, .. } => *choco_type,
-            Expression::Call { choco_type, .. } => *choco_type,
-
-            Expression::Lit { l: ast::Literal::True | ast::Literal::False } => ChocoType::Bool,
-            Expression::Lit { l: ast::Literal::Integer(_) } => ChocoType::Int,
-            Expression::Lit { l: ast::Literal::None } => ChocoType::None,
-            Expression::Lit { l: ast::Literal::Str(_) | ast::Literal::IdStr(_) } => ChocoType::Str,
-            Expression::Unary { choco_type, .. } => *choco_type,
-            Expression::Ternary { choco_type, .. } => *choco_type,
+            Var::Local { choco_type, .. } => *choco_type
         }
     }
+}
+
+pub(crate) trait ChocoTyped {
+    fn choco_type(&self) -> ChocoType;
 }
