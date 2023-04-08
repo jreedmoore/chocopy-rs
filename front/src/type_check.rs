@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::annotated_ast::{ChocoTyped, Expression};
-use crate::ast::{Identifier, Type};
+use crate::annotated_ast::ChocoTyped;
+use crate::ast::Type;
 use crate::{annotated_ast, ast};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -332,7 +332,7 @@ impl TypeChecker {
                 let stmts = self.check_stmts(&cond_block.then)?;
                 Ok(vec![annotated_ast::Statement::While { cond, stmts }])
             }
-            ast::Statement::For { id, in_expr, block } => todo!(),
+            ast::Statement::For { .. } => todo!(),
         }
     }
 

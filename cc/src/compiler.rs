@@ -2,7 +2,7 @@ use front::lexer::Lexer;
 use front::lower::Lower;
 use front::parser::Parser;
 use front::type_check::TypeChecker;
-use middle::stack::{self, FlatProgram};
+use middle::stack::FlatProgram;
 
 pub fn produce_stack_ir(program: &str) -> FlatProgram {
     let p = Parser::new(Lexer::new(program)).parse().unwrap();

@@ -671,7 +671,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn access_exp(&mut self, min_bp: usize) -> Option<ast::Expression> {
+    fn access_exp(&mut self, _min_bp: usize) -> Option<ast::Expression> {
         let token = self.advance("access exp")?;
         match token {
             Token::OpenBracket => {
@@ -730,7 +730,7 @@ impl<'a> Parser<'a> {
                 ast::Expression::Id(i) => targets.push(ast::Target::Id(i)),
                 ast::Expression::Member(m) => targets.push(ast::Target::Member(m)),
                 ast::Expression::Index(idx) => targets.push(ast::Target::Index(idx)),
-                t => {
+                _ => {
                     self.error(ParseError::UnexpectedExprInTargetPosition);
                     return None;
                 }

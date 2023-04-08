@@ -231,7 +231,7 @@ impl VM<IOMock> {
     fn new_mock_io() -> VM<IOMock> {
         VM {
             input: Box::new(|_| todo!()),
-            print: Box::new(|mut mock, s| mock.output.push(s)),
+            print: Box::new(|mock, s| mock.output.push(s)),
             instruction_pointer: 0,
             s: IOMock { output: vec![] },
             stack: vec![],

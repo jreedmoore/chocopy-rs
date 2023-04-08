@@ -205,7 +205,6 @@ impl Lower {
                     crate::ast::BinOp::Is => Instr::Is,
                 });
             }
-            Expression::Binary { choco_type, .. } => todo!("Unsupported type {:?}", choco_type),
             Expression::Call { f, params, .. } => {
                 params.iter().for_each(|p| self.lower_expr(p));
                 self.push_instr(Instr::Call(f.name.clone()))

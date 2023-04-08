@@ -1,6 +1,3 @@
-use cc::compiler;
-use cc::runtime;
-
 use std::fs;
 
 fn main() -> anyhow::Result<()> {
@@ -10,9 +7,7 @@ fn main() -> anyhow::Result<()> {
     } else {
         &args[1]
     };
-    let input = fs::read_to_string(filename)?;
+    let _input = fs::read_to_string(filename)?;
 
     todo!();
-
-    Ok(())
 }
