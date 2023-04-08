@@ -64,7 +64,7 @@ impl ChocoTyped for Expression {
             Expression::Unary { choco_type, .. } => *choco_type,
             Expression::Ternary { choco_type, .. } => *choco_type,
             Expression::Load { v } => v.choco_type(),
-            Expression::Index { expr, index } => expr.choco_type(),
+            Expression::Index { expr, .. } => expr.choco_type(),
         }
     }
 }

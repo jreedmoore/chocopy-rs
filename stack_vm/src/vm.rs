@@ -148,11 +148,12 @@ impl<S> VM<S> {
 
     fn rel_op<F>(&mut self, f: F)
     where
-        F: Fn(VMVal, VMVal) -> bool,
+        F: Fn(ValRef, ValRef) -> bool,
     {
         let r = self.pop();
         let l = self.pop();
-        self.push(VMVal::Bool(f(l, r)))
+        let b = f(self.follow(&l), self.follow(&r));
+        self.push(VMVal::Bool(b))
     }
 
     fn num_rel_op<F>(&mut self, f: F)
@@ -166,6 +167,13 @@ impl<S> VM<S> {
 
     fn pop(&mut self) -> VMVal {
         self.stack.pop().expect("empty stack")
+    }
+
+    fn follow<'a>(&'a self, v: &'a VMVal) -> ValRef<'a> {
+        match v {
+            VMVal::StrRef(idx) => ValRef::Mem(&self.heap[*idx]),
+            stack => ValRef::Stack(&stack),
+        }
     }
 
     fn pop_bool(&mut self) -> bool {
@@ -245,4 +253,10 @@ pub enum VMVal {
     Bool(bool),
     None,
     StrRef(usize),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ValRef<'a> {
+    Mem(&'a MemVal),
+    Stack(&'a VMVal),
 }

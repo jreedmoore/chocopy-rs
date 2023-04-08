@@ -181,7 +181,7 @@ pub enum BlockLocation {
 pub enum InstrLocation {
     InstrOffset(isize),
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MemVal {
     Str(String),
     Unused,
