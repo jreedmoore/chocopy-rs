@@ -56,12 +56,6 @@ impl<S> VM<S>
                 }
                 stack::Instr::Call(_) => todo!(),
                 stack::Instr::Drop => { self.pop(); }
-                stack::Instr::If(_) => todo!(),
-                stack::Instr::Else => todo!(),
-                stack::Instr::EndIf => todo!(),
-                stack::Instr::Loop => todo!(),
-                stack::Instr::EndLoop => todo!(),
-                stack::Instr::BrIf => todo!(),
                 stack::Instr::LoadLocal(idx) => {
                     let v = self.stack[*idx];
                     self.push(v)
@@ -69,6 +63,12 @@ impl<S> VM<S>
                 stack::Instr::StoreLocal(idx) => {
                     let v = self.pop();
                     self.stack[*idx] = v;
+                }
+                stack::Instr::Jump(stack::InstrLocation::InstrOffset(off)) => self.instruction_pointer = self.instruction_pointer.checked_add_signed(*off).expect("ip overflow"),
+                stack::Instr::IfJump(stack::InstrLocation::InstrOffset(off)) => {
+                    if self.pop_bool() {
+                        self.instruction_pointer = self.instruction_pointer.checked_add_signed(*off).expect("ip overflow")
+                    }
                 }
            }
            self.instruction_pointer += 1;
@@ -103,7 +103,7 @@ impl<S> VM<S>
     }
 
     fn pop(&mut self) -> VMVal {
-        self.stack.pop().expect("non empty stack")
+        self.stack.pop().expect("empty stack")
     }
 
     fn pop_bool(&mut self) -> bool {

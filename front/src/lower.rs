@@ -7,7 +7,7 @@ use crate::{
     ast,
     type_check::ChocoType,
 };
-use middle::stack::{self, Instr};
+use middle::stack::{self, Instr, BlockLocation};
 
 #[derive(Debug, PartialEq)]
 #[repr(u8)]
@@ -50,15 +50,15 @@ impl Lower {
         }
     }
 
-    fn push_instr(&mut self, instr: stack::Instr) {
-        self.lowered.instrs.push(instr);
+    fn push_instr(&mut self, instr: stack::Instr<BlockLocation>) {
+        self.lowered.push_instr(instr);
     }
 
     pub fn lower_prog(&mut self, prog: &annotated_ast::Program) -> &stack::Program {
+        self.lowered.start_block();
         for stmt in &prog.stmts {
             self.lower_statement(&stmt);
         }
-        self.lowered.locals = self.locals.max_used;
         &self.lowered
     }
 
@@ -67,7 +67,7 @@ impl Lower {
             annotated_ast::Statement::Expr(e) => {
                 self.lower_expr(e);
                 if e.choco_type() != ChocoType::None {
-                    self.lowered.instrs.push(stack::Instr::Drop)
+                    self.push_instr(stack::Instr::Drop)
                 }
             }
             Statement::Assign(Var::Local { name, .. }, e) => {
@@ -86,6 +86,7 @@ impl Lower {
                 }
             }
             Statement::If { cond, then, els } => {
+                /*
                 self.lower_expr(cond);
                 self.push_instr(Instr::If(false));
                 then.iter().for_each(|s| self.lower_statement(s));
@@ -94,8 +95,11 @@ impl Lower {
                     els.iter().for_each(|s| self.lower_statement(s));
                 }
                 self.push_instr(Instr::EndIf);
+                */
             }
             Statement::While { cond, stmts } => {
+                todo!();
+                /*
                 self.lower_expr(cond);
                 self.push_instr(Instr::Loop);
                 stmts.iter().for_each(|s| self.lower_statement(s));
@@ -103,6 +107,7 @@ impl Lower {
                 self.push_instr(Instr::UnaryNot);
                 self.push_instr(Instr::BrIf);
                 self.push_instr(Instr::EndLoop);
+                */
             }
         }
     }
@@ -161,11 +166,13 @@ impl Lower {
                 cond, then, els, ..
             } => {
                 self.lower_expr(cond);
-                self.push_instr(Instr::If(true));
-                self.lower_expr(then);
-                self.push_instr(Instr::Else);
+                self.push_instr(Instr::IfJump(BlockLocation::BlockOffset(2)));
+                self.lowered.start_block();
                 self.lower_expr(els);
-                self.push_instr(Instr::EndIf);
+                self.push_instr(Instr::Jump(BlockLocation::BlockOffset(2)));
+                self.lowered.start_block();
+                self.lower_expr(then);
+                self.lowered.start_block();
             }
             Expression::Load {
                 v: Var::Local { name, .. },
