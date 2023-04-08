@@ -24,6 +24,12 @@ impl Program {
     pub fn start_block(&mut self) {
         self.blocks.push(Block::new())
     }
+
+    pub fn insert_nop(&mut self) {
+        if self.blocks.last().unwrap().instrs.is_empty() {
+            self.push_instr(Instr::Nop)
+        }
+    }
 }
 #[derive(Debug, Clone)]
 pub struct FlatProgram {
@@ -37,6 +43,7 @@ impl FlatProgram {
             block_offsets.push(instruction_count);
             instruction_count += block.instrs.len() as isize;
         }
+        println!("{:?}\n{:?}", prog.blocks, block_offsets);
 
         let mut flat = FlatProgram { instrs: vec![] };
         let mut instruction_pointer: usize = 0;
@@ -48,6 +55,7 @@ impl FlatProgram {
                         let block_begin = block_offsets[dest_idx];
                         // -1 because we want to exclude the jump instruction itself from the offset
                         let instr_offset = (block_begin as isize) - (instruction_pointer as isize) - 1;
+                        println!("BlockOffset {} from blocks {} to {}, from instr {} to {}, offset = {}", off, idx, dest_idx, instruction_pointer, block_begin, instr_offset);
                         InstrLocation::InstrOffset(instr_offset)
                     }
                 }));
@@ -103,6 +111,7 @@ pub enum Instr<Loc> {
 
     Jump(Loc),
     IfJump(Loc),
+    Nop,
 
     // should these have types?
     // for now everything is an i32 in WASM
@@ -138,6 +147,7 @@ impl<A> Instr<A> {
             Drop => Drop,
             Jump(a) => Jump(f(a)),
             IfJump(a) => IfJump(f(a)),
+            Nop => Nop,
             LoadLocal(i) => LoadLocal(i),
             StoreLocal(i) => StoreLocal(i),
         }

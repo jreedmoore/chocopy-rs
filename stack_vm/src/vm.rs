@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use middle::stack;
 
+const VM_DEBUG: bool = false;
+
 pub struct VM<S> 
 {
     input: Box<dyn FnMut(&mut S) -> String>,
@@ -14,9 +16,15 @@ impl<S> VM<S>
 {
     fn run(&mut self, p: &stack::FlatProgram)
     {
+        if VM_DEBUG {
+            println!("IR: {:?}", p.instrs);
+        }
         loop {
             if self.instruction_pointer >= p.instrs.len() {
                 break;
+            }
+            if VM_DEBUG {
+                println!("Next Instr: (ip:{}) {:?}", self.instruction_pointer, &p.instrs[self.instruction_pointer]);
             }
             match &p.instrs[self.instruction_pointer] {
                 stack::Instr::NumConst(n) => self.push(VMVal::Number(*n)),
@@ -69,7 +77,8 @@ impl<S> VM<S>
                     if self.pop_bool() {
                         self.instruction_pointer = self.instruction_pointer.checked_add_signed(*off).expect("ip overflow")
                     }
-                }
+                },
+                stack::Instr::Nop => (),
            }
            self.instruction_pointer += 1;
         }

@@ -50,15 +50,12 @@ impl Lower {
         }
     }
 
-    fn push_instr(&mut self, instr: stack::Instr<BlockLocation>) {
-        self.lowered.push_instr(instr);
-    }
-
     pub fn lower_prog(&mut self, prog: &annotated_ast::Program) -> &stack::Program {
         self.lowered.start_block();
         for stmt in &prog.stmts {
             self.lower_statement(&stmt);
         }
+        self.lowered.insert_nop();
         &self.lowered
     }
 
@@ -86,16 +83,22 @@ impl Lower {
                 }
             }
             Statement::If { cond, then, els } => {
-                /*
                 self.lower_expr(cond);
-                self.push_instr(Instr::If(false));
-                then.iter().for_each(|s| self.lower_statement(s));
                 if !els.is_empty() {
-                    self.push_instr(Instr::Else);
+                    self.push_instr(Instr::IfJump(BlockLocation::BlockOffset(2)));
+                    self.start_block();
                     els.iter().for_each(|s| self.lower_statement(s));
+                    self.push_instr(Instr::Jump(BlockLocation::BlockOffset(2)));
+                    self.start_block();
+                    then.iter().for_each(|s| self.lower_statement(s));
+                    self.start_block();
+                } else {
+                    self.push_instr(Instr::UnaryNot);
+                    self.push_instr(Instr::IfJump(BlockLocation::BlockOffset(2)));
+                    self.start_block();
+                    then.iter().for_each(|s| self.lower_statement(s));
+                    self.start_block();
                 }
-                self.push_instr(Instr::EndIf);
-                */
             }
             Statement::While { cond, stmts } => {
                 todo!();
@@ -167,12 +170,12 @@ impl Lower {
             } => {
                 self.lower_expr(cond);
                 self.push_instr(Instr::IfJump(BlockLocation::BlockOffset(2)));
-                self.lowered.start_block();
+                self.start_block();
                 self.lower_expr(els);
                 self.push_instr(Instr::Jump(BlockLocation::BlockOffset(2)));
-                self.lowered.start_block();
+                self.start_block();
                 self.lower_expr(then);
-                self.lowered.start_block();
+                self.start_block();
             }
             Expression::Load {
                 v: Var::Local { name, .. },
@@ -195,4 +198,12 @@ impl Lower {
     fn get_local(&self, name: &str) -> usize {
         self.locals.bindings[name]
     }
+
+    fn push_instr(&mut self, instr: stack::Instr<BlockLocation>) {
+        self.lowered.push_instr(instr);
+    }
+
+    fn start_block(&mut self) {
+        self.lowered.start_block()
+    }   
 }
