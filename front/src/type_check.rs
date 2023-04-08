@@ -11,6 +11,15 @@ pub enum ChocoType {
     Str,
     None, // the unmentionable type!
 }
+impl ChocoType {
+    fn is_ref(&self) -> bool {
+        match self {
+            ChocoType::Str => true,
+            ChocoType::None => true,
+            _ => false
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
@@ -22,6 +31,7 @@ pub enum TypeError {
     NotBound(String),
     EmptyTargets,
     CannotRebindLocal(String),
+    ExpectedRef,
 }
 impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -166,7 +176,12 @@ impl TypeChecker {
                         Ok(ChocoType::Bool)
                     }
 
-                    ast::BinOp::Is => Ok(rel_type),
+                    ast::BinOp::Is => 
+                        if rel_type.is_ref() {
+                            Ok(ChocoType::Bool)
+                        } else {
+                            Err(TypeError::ExpectedRef)
+                        }
                     ast::BinOp::And | ast::BinOp::Or => unreachable!(),
                 }?;
                 Ok(annotated_ast::Expression::Binary {
@@ -498,6 +513,7 @@ mod tests {
         assert_fails_type_check("1 if True else False");
         assert_fails_type_check("1 if 2 else 3");
         assert_fails_type_check("True + True");
+        assert_fails_type_check("True is True");
         assert_fails_type_check("1 and 2");
         assert_fails_type_check("(1 + 2) and 3");
     }

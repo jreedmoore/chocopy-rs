@@ -31,7 +31,6 @@ fn test_exprs() {
     assert_output("print(1 if True else 2)", vec!["1"]);
     assert_output("print(1 if False else 2)", vec!["2"]);
     assert_output("print(None is None)", vec!["True"]);
-    assert_output("print(False is True)", vec!["False"]);
 }
 
 #[test]
