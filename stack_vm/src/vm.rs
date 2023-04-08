@@ -132,6 +132,11 @@ impl<S> VM<S> {
                     let idx = self.alloc(MemVal::Str(s));
                     self.push(VMVal::StrRef(idx));
                 }
+                stack::Instr::Is => {
+                    let r = self.pop();
+                    let l = self.pop();
+                    self.push(VMVal::Bool(l == r && l.is_ref() && r.is_ref()));
+                }
             }
             self.instruction_pointer += 1;
         }
@@ -253,6 +258,15 @@ pub enum VMVal {
     Bool(bool),
     None,
     StrRef(usize),
+}
+impl VMVal {
+    fn is_ref(&self) -> bool {
+        match self {
+            VMVal::None => true,
+            VMVal::StrRef(_) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]

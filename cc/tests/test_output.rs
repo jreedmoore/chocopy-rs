@@ -30,6 +30,8 @@ fn test_exprs() {
     assert_output("print((1 > 2))\nprint((1 < 2))", vec!["False", "True"]);
     assert_output("print(1 if True else 2)", vec!["1"]);
     assert_output("print(1 if False else 2)", vec!["2"]);
+    assert_output("print(None is None)", vec!["True"]);
+    assert_output("print(False is True)", vec!["False"]);
 }
 
 #[test]
@@ -64,5 +66,5 @@ fn test_strings() {
     assert_output("x: str = \"abc\"\nprint(x)", vec!["abc"]);
     assert_output("x: str = \"abc\"\nprint(x[1])", vec!["b"]);
     assert_output("print(\"abc\" == \"abc\")", vec!["True"]);
-    //assert_output("print(\"abc\" is \"abc\")", vec!["False"]);
+    assert_output("print(\"abc\" is \"abc\")", vec!["False"]);
 }

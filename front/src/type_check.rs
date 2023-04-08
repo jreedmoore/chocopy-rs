@@ -166,7 +166,7 @@ impl TypeChecker {
                         Ok(ChocoType::Bool)
                     }
 
-                    ast::BinOp::Is => todo!(),
+                    ast::BinOp::Is => Ok(rel_type),
                     ast::BinOp::And | ast::BinOp::Or => unreachable!(),
                 }?;
                 Ok(annotated_ast::Expression::Binary {

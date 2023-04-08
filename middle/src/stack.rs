@@ -133,6 +133,7 @@ pub enum Instr<Loc> {
 
     // expects [StrRef Int] on stack
     StrIndex,
+    Is,
 }
 impl<A> Instr<A> {
     fn map<B, F>(self, f: F) -> Instr<B>
@@ -158,6 +159,7 @@ impl<A> Instr<A> {
             Lte => Lte,
             Gt => Gt,
             Gte => Gte,
+            Is => Is,
             Call(f) => Call(f),
             Drop => Drop,
             Jump(a) => Jump(f(a)),

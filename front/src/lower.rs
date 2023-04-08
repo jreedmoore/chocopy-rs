@@ -150,12 +150,30 @@ impl Lower {
                 op,
                 l,
                 r,
+                choco_type: ChocoType::None,
+            } => {
+                self.lower_expr(l);
+                self.lower_expr(r);
+                self.push_instr(match op {
+                    ast::BinOp::Equals => Instr::Eq,
+                    ast::BinOp::NotEquals => Instr::Ne,
+                    ast::BinOp::Is => Instr::Is,
+                    _ => panic!("Unsupported op for None"),
+                })
+            }
+            Expression::Binary {
+                op,
+                l,
+                r,
                 choco_type: ChocoType::Str,
             } => {
                 self.lower_expr(l);
                 self.lower_expr(r);
                 self.push_instr(match op {
                     ast::BinOp::Plus => Instr::StrConcat,
+                    ast::BinOp::Equals => Instr::Eq,
+                    ast::BinOp::NotEquals => Instr::Ne,
+                    ast::BinOp::Is => Instr::Is,
                     _ => panic!("Unsupported op for strings"),
                 })
             }
@@ -184,7 +202,7 @@ impl Lower {
                     crate::ast::BinOp::GreaterThanEqual => Instr::Gte,
 
                     // object id comparison, only makes sense with allocation implemented
-                    crate::ast::BinOp::Is => todo!(),
+                    crate::ast::BinOp::Is => Instr::Is,
                 });
             }
             Expression::Binary { choco_type, .. } => todo!("Unsupported type {:?}", choco_type),
