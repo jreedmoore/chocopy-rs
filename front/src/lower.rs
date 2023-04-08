@@ -7,7 +7,7 @@ use crate::{
     ast,
     type_check::ChocoType,
 };
-use middle::stack::{self, Instr, BlockLocation};
+use middle::stack::{self, BlockLocation, Instr};
 
 #[derive(Debug, PartialEq)]
 #[repr(u8)]
@@ -108,7 +108,6 @@ impl Lower {
                 stmts.iter().for_each(|s| self.lower_statement(s));
                 self.push_instr(Instr::Jump(BlockLocation::BlockOffset(0)));
                 self.start_block();
-                
             }
         }
     }
@@ -127,11 +126,15 @@ impl Lower {
             Expression::Lit {
                 l: ast::Literal::None,
             } => self.push_instr(Instr::NoneConst),
-            Expression::Lit { l: ast::Literal::Str(s) } => {
+            Expression::Lit {
+                l: ast::Literal::Str(s),
+            } => {
                 let idx = self.push_constant(s);
                 self.push_instr(Instr::LoadConstant(idx));
             }
-            Expression::Lit { l: ast::Literal::IdStr(i) } => {
+            Expression::Lit {
+                l: ast::Literal::IdStr(i),
+            } => {
                 let idx = self.push_constant(&i.name);
                 self.push_instr(Instr::LoadConstant(idx));
             }
@@ -143,15 +146,25 @@ impl Lower {
                 self.lower_expr(e);
                 self.push_instr(Instr::UnaryNot);
             }
-            Expression::Binary { op, l, r, choco_type: ChocoType::Str } => {
+            Expression::Binary {
+                op,
+                l,
+                r,
+                choco_type: ChocoType::Str,
+            } => {
                 self.lower_expr(l);
                 self.lower_expr(r);
                 self.push_instr(match op {
-                    ast::BinOp::Plus => Instr::ConcatStr,
-                    _ => panic!("Unsupported op for strings")
+                    ast::BinOp::Plus => Instr::StrConcat,
+                    _ => panic!("Unsupported op for strings"),
                 })
             }
-            Expression::Binary { op, l, r, choco_type: ChocoType::Int | ChocoType::Bool } => {
+            Expression::Binary {
+                op,
+                l,
+                r,
+                choco_type: ChocoType::Int | ChocoType::Bool,
+            } => {
                 self.lower_expr(l);
                 self.lower_expr(r);
                 self.push_instr(match op {
@@ -194,6 +207,14 @@ impl Lower {
             Expression::Load {
                 v: Var::Local { name, .. },
             } => self.push_instr(Instr::LoadLocal(self.get_local(&name))),
+            Expression::Index { expr, index } => match expr.choco_type() {
+                ChocoType::Str => {
+                    self.lower_expr(expr);
+                    self.lower_expr(index);
+                    self.push_instr(Instr::StrIndex);
+                }
+                t => panic!("Unsupported type for index {:?}", t),
+            },
         }
     }
 
@@ -225,5 +246,5 @@ impl Lower {
         let idx = self.lowered.consts.len();
         self.lowered.consts.push(stack::MemVal::Str(s.to_owned()));
         idx
-    }   
+    }
 }

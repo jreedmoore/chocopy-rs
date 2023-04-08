@@ -38,7 +38,7 @@ const FLATTEN_DEBUG: bool = false;
 #[derive(Debug, Clone)]
 pub struct FlatProgram {
     pub consts: Vec<MemVal>,
-    pub instrs: Vec<Instr<InstrLocation>>
+    pub instrs: Vec<Instr<InstrLocation>>,
 }
 impl FlatProgram {
     pub fn from_program(prog: Program) -> FlatProgram {
@@ -52,7 +52,10 @@ impl FlatProgram {
             println!("{:?}\n{:?}", prog.blocks, block_offsets);
         }
 
-        let mut flat = FlatProgram { instrs: vec![], consts: prog.consts };
+        let mut flat = FlatProgram {
+            instrs: vec![],
+            consts: prog.consts,
+        };
         let mut instruction_pointer: usize = 0;
         for (idx, block) in prog.blocks.into_iter().enumerate() {
             for instr in block.instrs {
@@ -82,7 +85,7 @@ impl FlatProgram {
 
 #[derive(Debug, Clone)]
 pub struct Block {
-    pub instrs: Vec<Instr<BlockLocation>>
+    pub instrs: Vec<Instr<BlockLocation>>,
 }
 impl Block {
     fn new() -> Block {
@@ -122,16 +125,19 @@ pub enum Instr<Loc> {
     IfJump(Loc),
     Nop,
 
-    ConcatStr,
+    StrConcat,
 
     LoadLocal(usize),
     StoreLocal(usize),
     LoadConstant(usize),
+
+    // expects [StrRef Int] on stack
+    StrIndex,
 }
 impl<A> Instr<A> {
     fn map<B, F>(self, f: F) -> Instr<B>
-    where 
-        F: Fn(A) -> B
+    where
+        F: Fn(A) -> B,
     {
         use Instr::*;
         match self {
@@ -160,7 +166,8 @@ impl<A> Instr<A> {
             LoadLocal(i) => LoadLocal(i),
             StoreLocal(i) => StoreLocal(i),
             LoadConstant(i) => LoadConstant(i),
-            ConcatStr => ConcatStr,
+            StrConcat => StrConcat,
+            StrIndex => StrIndex,
         }
     }
 }
@@ -177,5 +184,5 @@ pub enum InstrLocation {
 #[derive(Debug, Clone)]
 pub enum MemVal {
     Str(String),
-    Unused
+    Unused,
 }

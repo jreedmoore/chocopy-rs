@@ -2,21 +2,18 @@ use middle::stack::{self, MemVal};
 
 const VM_DEBUG: bool = false;
 
-pub struct VM<S> 
-{
+pub struct VM<S> {
     input: Box<dyn FnMut(&mut S) -> String>,
-    print: Box<dyn FnMut(&mut S,String)>,
+    print: Box<dyn FnMut(&mut S, String)>,
     instruction_pointer: usize,
     stack: Vec<VMVal>,
     consts: Vec<MemVal>,
     globals: Vec<MemVal>,
     heap: Vec<MemVal>,
-    pub s: S
+    pub s: S,
 }
-impl<S> VM<S> 
-{
-    fn run(&mut self, p: &stack::FlatProgram)
-    {
+impl<S> VM<S> {
+    fn run(&mut self, p: &stack::FlatProgram) {
         if VM_DEBUG {
             println!("IR: {:?}", p.instrs);
         }
@@ -25,25 +22,28 @@ impl<S> VM<S>
                 break;
             }
             if VM_DEBUG {
-                println!("Next Instr: (ip:{}) {:?}", self.instruction_pointer, &p.instrs[self.instruction_pointer]);
+                println!(
+                    "Next Instr: (ip:{}) {:?}",
+                    self.instruction_pointer, &p.instrs[self.instruction_pointer]
+                );
             }
             match &p.instrs[self.instruction_pointer] {
                 stack::Instr::NumConst(n) => self.push(VMVal::Number(*n)),
                 stack::Instr::BoolConst(b) => self.push(VMVal::Bool(*b)),
                 stack::Instr::NoneConst => self.push(VMVal::None),
 
-                stack::Instr::Add => self.bin_op(|l,r| l + r),
-                stack::Instr::Sub => self.bin_op(|l,r| l - r),
-                stack::Instr::Mul => self.bin_op(|l,r| l * r),
-                stack::Instr::Modulo => self.bin_op(|l,r| l % r),
-                stack::Instr::Div => self.bin_op(|l,r| l / r),
+                stack::Instr::Add => self.bin_op(|l, r| l + r),
+                stack::Instr::Sub => self.bin_op(|l, r| l - r),
+                stack::Instr::Mul => self.bin_op(|l, r| l * r),
+                stack::Instr::Modulo => self.bin_op(|l, r| l % r),
+                stack::Instr::Div => self.bin_op(|l, r| l / r),
 
-                stack::Instr::Eq => self.rel_op(|l,r| l == r),
-                stack::Instr::Ne => self.rel_op(|l,r| l != r),
-                stack::Instr::Lt => self.num_rel_op(|l,r| l < r),
-                stack::Instr::Lte => self.num_rel_op(|l,r| l <= r),
-                stack::Instr::Gt => self.num_rel_op(|l,r| l > r),
-                stack::Instr::Gte => self.num_rel_op(|l,r| l >= r),
+                stack::Instr::Eq => self.rel_op(|l, r| l == r),
+                stack::Instr::Ne => self.rel_op(|l, r| l != r),
+                stack::Instr::Lt => self.num_rel_op(|l, r| l < r),
+                stack::Instr::Lte => self.num_rel_op(|l, r| l <= r),
+                stack::Instr::Gt => self.num_rel_op(|l, r| l > r),
+                stack::Instr::Gte => self.num_rel_op(|l, r| l >= r),
 
                 stack::Instr::UnaryNot => {
                     let b = self.pop_bool();
@@ -77,7 +77,9 @@ impl<S> VM<S>
                     (self.print)(&mut self.s, s)
                 }
                 stack::Instr::Call(_) => todo!(),
-                stack::Instr::Drop => { self.pop(); }
+                stack::Instr::Drop => {
+                    self.pop();
+                }
                 stack::Instr::LoadLocal(idx) => {
                     let v = self.stack[*idx];
                     self.push(v)
@@ -86,12 +88,20 @@ impl<S> VM<S>
                     let v = self.pop();
                     self.stack[*idx] = v;
                 }
-                stack::Instr::Jump(stack::InstrLocation::InstrOffset(off)) => self.instruction_pointer = self.instruction_pointer.checked_add_signed(*off).expect("ip overflow"),
+                stack::Instr::Jump(stack::InstrLocation::InstrOffset(off)) => {
+                    self.instruction_pointer = self
+                        .instruction_pointer
+                        .checked_add_signed(*off)
+                        .expect("ip overflow")
+                }
                 stack::Instr::IfJump(stack::InstrLocation::InstrOffset(off)) => {
                     if self.pop_bool() {
-                        self.instruction_pointer = self.instruction_pointer.checked_add_signed(*off).expect("ip overflow")
+                        self.instruction_pointer = self
+                            .instruction_pointer
+                            .checked_add_signed(*off)
+                            .expect("ip overflow")
                     }
-                },
+                }
                 stack::Instr::Nop => (),
                 stack::Instr::LoadConstant(i) => {
                     let idx = self.alloc(p.consts[*i].clone());
@@ -101,7 +111,7 @@ impl<S> VM<S>
                     };
                     self.push(stack_ref);
                 }
-                stack::Instr::ConcatStr => {
+                stack::Instr::StrConcat => {
                     let r = self.pop_str();
                     let l = self.pop_str();
                     let mut s = self.heap_as_str(l).to_owned();
@@ -109,14 +119,27 @@ impl<S> VM<S>
                     let idx = self.alloc(MemVal::Str(s));
                     self.push(VMVal::StrRef(idx))
                 }
-           }
-           self.instruction_pointer += 1;
+                stack::Instr::StrIndex => {
+                    let idx = self.pop_num();
+                    let s_ref = self.pop_str();
+                    let c = self
+                        .heap_as_str(s_ref)
+                        .chars()
+                        .nth(idx as usize)
+                        .expect("str index out-of-bounds");
+                    let mut s = String::new();
+                    s.push(c);
+                    let idx = self.alloc(MemVal::Str(s));
+                    self.push(VMVal::StrRef(idx));
+                }
+            }
+            self.instruction_pointer += 1;
         }
     }
 
-    fn bin_op<F>(&mut self, f: F) 
-    where 
-        F: Fn(i32, i32) -> i32
+    fn bin_op<F>(&mut self, f: F)
+    where
+        F: Fn(i32, i32) -> i32,
     {
         let r = self.pop_num();
         let l = self.pop_num();
@@ -125,20 +148,20 @@ impl<S> VM<S>
 
     fn rel_op<F>(&mut self, f: F)
     where
-        F: Fn(VMVal, VMVal) -> bool
+        F: Fn(VMVal, VMVal) -> bool,
     {
         let r = self.pop();
         let l = self.pop();
-        self.push(VMVal::Bool(f(l,r)))
+        self.push(VMVal::Bool(f(l, r)))
     }
 
     fn num_rel_op<F>(&mut self, f: F)
     where
-        F: Fn(i32, i32) -> bool
+        F: Fn(i32, i32) -> bool,
     {
         let r = self.pop_num();
         let l = self.pop_num();
-        self.push(VMVal::Bool(f(l,r)))
+        self.push(VMVal::Bool(f(l, r)))
     }
 
     fn pop(&mut self) -> VMVal {
@@ -163,7 +186,7 @@ impl<S> VM<S>
 
     fn pop_str(&mut self) -> usize {
         if let VMVal::StrRef(idx) = self.pop() {
-            idx 
+            idx
         } else {
             panic!("expected str ref on stack")
         }
@@ -176,10 +199,9 @@ impl<S> VM<S>
     fn heap_as_str(&self, idx: usize) -> &str {
         match &self.heap[idx] {
             MemVal::Str(s) => s.as_str(),
-            MemVal::Unused => panic!("expected Str on heap, got Unused")
+            MemVal::Unused => panic!("expected Str on heap, got Unused"),
         }
     }
-
 
     fn alloc(&mut self, m: MemVal) -> usize {
         let idx = self.heap.len();
@@ -192,10 +214,18 @@ impl<S> VM<S>
         self.heap[idx] = MemVal::Unused;
     }
 }
-impl VM<IOMock> 
-{
+impl VM<IOMock> {
     fn new_mock_io() -> VM<IOMock> {
-        VM { input: Box::new(|_| todo!()), print: Box::new(|mut mock,s| mock.output.push(s)), instruction_pointer: 0, s: IOMock { output: vec![] }, stack: vec![], consts: vec![], globals: vec![], heap: vec![] }
+        VM {
+            input: Box::new(|_| todo!()),
+            print: Box::new(|mut mock, s| mock.output.push(s)),
+            instruction_pointer: 0,
+            s: IOMock { output: vec![] },
+            stack: vec![],
+            consts: vec![],
+            globals: vec![],
+            heap: vec![],
+        }
     }
 
     pub fn run_with_mock_io(p: &stack::FlatProgram) -> Vec<String> {
@@ -206,14 +236,13 @@ impl VM<IOMock>
 }
 
 pub struct IOMock {
-    output: Vec<String>
+    output: Vec<String>,
 }
-
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum VMVal {
     Number(i32),
     Bool(bool),
     None,
-    StrRef(usize)
+    StrRef(usize),
 }

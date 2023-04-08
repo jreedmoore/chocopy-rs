@@ -4,11 +4,7 @@ fn assert_output(program: &str, expected_output: Vec<&str>) {
     let ir = compiler::produce_stack_ir(program);
     let actual = stack_vm::vm::VM::run_with_mock_io(&ir);
 
-    assert_eq!(
-        actual, expected_output,
-        "in example: {}",
-        program,
-    );
+    assert_eq!(actual, expected_output, "in example: {}", program,);
 }
 
 #[test]
@@ -65,8 +61,6 @@ fn test_loop() {
 fn test_strings() {
     assert_output("print(\"hello world\")", vec!["hello world"]);
     assert_output("print(\"hello \" + \"world\")", vec!["hello world"]);
-    assert_output(
-        "x: str = \"abc\"\nprint(x)",
-        vec!["abc"]
-    );
+    assert_output("x: str = \"abc\"\nprint(x)", vec!["abc"]);
+    assert_output("x: str = \"abc\"\nprint(x[1])", vec!["b"]);
 }

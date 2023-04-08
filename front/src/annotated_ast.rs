@@ -50,6 +50,10 @@ pub enum Expression {
     Load {
         v: Var,
     },
+    Index {
+        expr: Box<Expression>,
+        index: Box<Expression>,
+    },
 }
 impl ChocoTyped for Expression {
     fn choco_type(&self) -> ChocoType {
@@ -60,6 +64,7 @@ impl ChocoTyped for Expression {
             Expression::Unary { choco_type, .. } => *choco_type,
             Expression::Ternary { choco_type, .. } => *choco_type,
             Expression::Load { v } => v.choco_type(),
+            Expression::Index { expr, index } => expr.choco_type(),
         }
     }
 }

@@ -133,13 +133,14 @@ impl TypeChecker {
                 };
                 let rel_type = al.choco_type();
                 let res_type = match op {
-                    ast::BinOp::Plus => {
-                        match rel_type {
-                            ChocoType::Int | ChocoType::Str => Ok(rel_type),
-                            _ => Err(TypeError::TypeMismatch { expected: ChocoType::Int, actual: rel_type })
-                        }
-                    }
-                    | ast::BinOp::Minus
+                    ast::BinOp::Plus => match rel_type {
+                        ChocoType::Int | ChocoType::Str => Ok(rel_type),
+                        _ => Err(TypeError::TypeMismatch {
+                            expected: ChocoType::Int,
+                            actual: rel_type,
+                        }),
+                    },
+                    ast::BinOp::Minus
                     | ast::BinOp::Multiply
                     | ast::BinOp::IntegerDiv
                     | ast::BinOp::Modulo => {
@@ -206,7 +207,20 @@ impl TypeChecker {
                 .get_local(&id.name)
                 .map(|v| annotated_ast::Expression::Load { v: v.clone() }),
             ast::Expression::Member(_) => todo!(),
-            ast::Expression::Index(_) => todo!(),
+            ast::Expression::Index(ast::IndexExpression { expr, index }) => {
+                let access = self.check_expression(expr)?;
+                let index = TypeChecker::match_type(ChocoType::Int, self.check_expression(index)?)?;
+                match access.choco_type() {
+                    ChocoType::Str => Ok(annotated_ast::Expression::Index {
+                        expr: Box::new(access),
+                        index: Box::new(index),
+                    }),
+                    t => Err(TypeError::TypeMismatch {
+                        expected: ChocoType::Str,
+                        actual: t,
+                    }),
+                }
+            }
             ast::Expression::MemberCall(_, _) => todo!(),
             ast::Expression::Call(_, _) => todo!(),
         }
