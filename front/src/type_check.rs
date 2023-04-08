@@ -339,7 +339,7 @@ impl TypeChecker {
                     });
                 }
                 let v = self.add_local(def.var.id.name.clone(), bound_type)?.clone();
-                Ok(vec![annotated_ast::Statement::Assign(
+                Ok(vec![annotated_ast::Statement::Declare(
                     v,
                     annotated_ast::Expression::Lit {
                         l: def.literal.clone(),

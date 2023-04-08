@@ -1,14 +1,13 @@
 use cc::compiler;
-use cc::runtime;
 
 fn assert_output(program: &str, expected_output: Vec<&str>) -> anyhow::Result<()> {
-    let wat = compiler::produce_wat(program)?;
-    let actual = runtime::run_with_mocked_io(&wat, &vec![])?;
+    let ir = compiler::produce_stack_ir(program)?;
+    let actual = stack_vm::vm::VM::run_with_mock_io(&ir);
 
     assert_eq!(
-        expected_output, actual,
-        "in example: {} with WAT: {}",
-        program, wat
+        actual, expected_output,
+        "in example: {}",
+        program,
     );
 
     Ok(())
@@ -42,6 +41,7 @@ fn test_exprs() -> anyhow::Result<()> {
 
 #[test]
 fn test_locals() -> anyhow::Result<()> {
+    assert_output("x: int = 1\nprint(x)", vec!["1"])?;
     assert_output("x: int = 1\nprint(x)", vec!["1"])?;
     assert_output("x: bool = False\nprint(x)", vec!["False"])?;
     Ok(())

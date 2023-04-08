@@ -1,19 +1,11 @@
-use back_wasm::wasm::WATPrint;
 use front::lexer::Lexer;
 use front::lower::Lower;
 use front::parser::Parser;
+use front::type_check::TypeChecker;
+use middle::stack;
 
-pub fn produce_wat(input: &str) -> anyhow::Result<String> {
-    let lexer = Lexer::new(&input);
-    let mut parser = Parser::new(lexer);
-
-    let prog = parser.parse()?;
-
-    let mut typeck = front::type_check::TypeChecker::new();
-    let ann_prog = typeck.check_prog(&prog)?;
-
-    let mut lower = Lower::new();
-    let stack = lower.lower_prog(&ann_prog);
-
-    Ok(back_wasm::emit::prog(&stack).wat_print())
+pub fn produce_stack_ir(program: &str) -> anyhow::Result<stack::FlatProgram> {
+    let p = Parser::new(Lexer::new(program)).parse()?;
+    let a = TypeChecker::new().check_prog(&p)?;
+    Ok(Lower::new().lower_prog(&a).clone())
 }

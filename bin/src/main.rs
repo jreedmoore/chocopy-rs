@@ -12,11 +12,7 @@ fn main() -> anyhow::Result<()> {
     };
     let input = fs::read_to_string(filename)?;
 
-    let wat = compiler::produce_wat(&input)?;
-
-    println!("wat: {}", wat);
-
-    runtime::run_to_stdin_out(&wat)?;
+    todo!();
 
     Ok(())
 }

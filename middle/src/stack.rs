@@ -6,6 +6,7 @@
 //   - We have some kind of .data segment for globals
 //   - We have a heap for dynamically sized data
 
+#[derive(Debug, Clone)]
 pub struct Program {
     pub instrs: Vec<Instr>,
     pub locals: usize,
@@ -18,9 +19,13 @@ impl Program {
         }
     }
 }
+pub type FlatProgram = Program;
 
+#[derive(Debug, Clone)]
 pub enum Instr {
-    NumConst(i64),
+    NumConst(i32),
+    BoolConst(bool),
+    NoneConst,
 
     Add,
     Sub,
@@ -28,12 +33,9 @@ pub enum Instr {
     Modulo,
     Div,
 
-    ArithShiftRight,
-    ShiftLeft,
-
-    BitAnd,
-    BitXor,
-    BitOr,
+    LogicalAnd,
+    LogicalOr,
+    UnaryNot,
 
     // relational
     Eq,

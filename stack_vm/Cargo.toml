@@ -1,11 +1,9 @@
 [package]
-name = "back_wasm"
+name = "stack_vm"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-front = { path = '../front' }
-middle = { path = '../middle' }
-itertools = "0.10.5"
+middle = { path = "../middle" }

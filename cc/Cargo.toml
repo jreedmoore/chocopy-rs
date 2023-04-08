@@ -7,6 +7,6 @@ edition = "2021"
 
 [dependencies]
 front = { path = "../front" }
-back_wasm = { path = "../back_wasm" }
-wasmtime = "7.0.0"
+middle = { path = "../middle" }
+stack_vm = { path = "../stack_vm" }
 anyhow = "1.0.70"

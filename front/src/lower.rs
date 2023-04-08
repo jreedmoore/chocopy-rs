@@ -74,9 +74,16 @@ impl Lower {
                 let index = self.upsert_local(name);
                 self.lower_expr(e);
                 if e.choco_type() == ChocoType::None {
-                    self.push_instr(Instr::NumConst(NONE))
+                    self.push_instr(Instr::NoneConst)
                 }
                 self.push_instr(Instr::StoreLocal(index))
+            }
+            Statement::Declare(Var::Local { name, .. }, e) => {
+                self.upsert_local(name);
+                self.lower_expr(e);
+                if e.choco_type() == ChocoType::None {
+                    self.push_instr(Instr::NoneConst)
+                }
             }
             Statement::If { cond, then, els } => {
                 self.lower_expr(cond);
@@ -93,8 +100,7 @@ impl Lower {
                 self.push_instr(Instr::Loop);
                 stmts.iter().for_each(|s| self.lower_statement(s));
                 self.lower_expr(cond);
-                self.push_instr(Instr::NumConst(MSB));
-                self.push_instr(Instr::BitXor);
+                self.push_instr(Instr::UnaryNot);
                 self.push_instr(Instr::BrIf);
                 self.push_instr(Instr::EndLoop);
             }
@@ -105,16 +111,16 @@ impl Lower {
         match e {
             Expression::Lit {
                 l: ast::Literal::True,
-            } => self.push_instr(Instr::NumConst(TRUE)),
+            } => self.push_instr(Instr::BoolConst(true)),
             Expression::Lit {
                 l: ast::Literal::False,
-            } => self.push_instr(Instr::NumConst(FALSE)),
+            } => self.push_instr(Instr::BoolConst(false)),
             Expression::Lit {
                 l: ast::Literal::Integer(i),
-            } => self.push_instr(Instr::NumConst((*i as i64) << TAG_BITS)),
+            } => self.push_instr(Instr::NumConst(*i)),
             Expression::Lit {
                 l: ast::Literal::None,
-            } => self.push_instr(Instr::NumConst(NONE)),
+            } => self.push_instr(Instr::NoneConst),
             Expression::Lit { l: _ } => todo!(), // strings
             Expression::Unary {
                 op: annotated_ast::UnaryOp::LogicalNot,
@@ -122,15 +128,14 @@ impl Lower {
                 ..
             } => {
                 self.lower_expr(e);
-                self.push_instr(Instr::NumConst(MSB));
-                self.push_instr(Instr::BitXor);
+                self.push_instr(Instr::UnaryNot);
             }
             Expression::Binary { op, l, r, .. } => {
                 self.lower_expr(l);
                 self.lower_expr(r);
                 self.push_instr(match op {
-                    crate::ast::BinOp::And => Instr::BitAnd,
-                    crate::ast::BinOp::Or => Instr::BitOr,
+                    crate::ast::BinOp::And => Instr::LogicalAnd,
+                    crate::ast::BinOp::Or => Instr::LogicalOr,
                     crate::ast::BinOp::Plus => Instr::Add,
                     crate::ast::BinOp::Minus => Instr::Sub,
                     crate::ast::BinOp::Multiply => Instr::Mul,
@@ -147,14 +152,6 @@ impl Lower {
                     // object id comparison, only makes sense with allocation implemented
                     crate::ast::BinOp::Is => todo!(),
                 });
-                if *op == crate::ast::BinOp::Multiply {
-                    self.push_instr(Instr::NumConst(TAG_BITS as i64));
-                    self.push_instr(Instr::ArithShiftRight);
-                }
-                if *op == crate::ast::BinOp::IntegerDiv {
-                    self.push_instr(Instr::NumConst(TAG_BITS as i64));
-                    self.push_instr(Instr::ShiftLeft);
-                }
             }
             Expression::Call { f, params, .. } => {
                 params.iter().for_each(|p| self.lower_expr(p));
