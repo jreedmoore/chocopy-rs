@@ -127,7 +127,14 @@ impl Lower {
             Expression::Lit {
                 l: ast::Literal::None,
             } => self.push_instr(Instr::NoneConst),
-            Expression::Lit { l: _ } => todo!(), // strings
+            Expression::Lit { l: ast::Literal::Str(s) } => {
+                let idx = self.push_constant(s);
+                self.push_instr(Instr::LoadConstant(idx));
+            }
+            Expression::Lit { l: ast::Literal::IdStr(i) } => {
+                let idx = self.push_constant(&i.name);
+                self.push_instr(Instr::LoadConstant(idx));
+            }
             Expression::Unary {
                 op: annotated_ast::UnaryOp::LogicalNot,
                 e,
@@ -203,5 +210,11 @@ impl Lower {
 
     fn start_block(&mut self) {
         self.lowered.start_block()
+    }
+
+    fn push_constant(&mut self, s: &str) -> usize {
+        let idx = self.lowered.consts.len();
+        self.lowered.consts.push(stack::MemVal::Str(s.to_owned()));
+        idx
     }   
 }

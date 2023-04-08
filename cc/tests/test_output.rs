@@ -1,7 +1,7 @@
 use cc::compiler;
 
-fn assert_output(program: &str, expected_output: Vec<&str>) -> anyhow::Result<()> {
-    let ir = compiler::produce_stack_ir(program)?;
+fn assert_output(program: &str, expected_output: Vec<&str>) {
+    let ir = compiler::produce_stack_ir(program);
     let actual = stack_vm::vm::VM::run_with_mock_io(&ir);
 
     assert_eq!(
@@ -9,60 +9,63 @@ fn assert_output(program: &str, expected_output: Vec<&str>) -> anyhow::Result<()
         "in example: {}",
         program,
     );
-
-    Ok(())
 }
 
 #[test]
-fn test_exprs() -> anyhow::Result<()> {
-    assert_output("print(1 + 2)", vec!["3"])?;
-    assert_output("print(1 - 2)", vec!["-1"])?;
-    assert_output("print(-1)", vec!["-1"])?;
-    assert_output("print(True)", vec!["True"])?;
-    assert_output("print(not True)", vec!["False"])?;
-    assert_output("print(False)", vec!["False"])?;
-    assert_output("print(True or False)", vec!["True"])?;
-    assert_output("1", vec![])?;
-    assert_output("print(2 * 2)", vec!["4"])?;
-    assert_output("print(2 // 2)", vec!["1"])?;
-    assert_output("print(5 % 2)", vec!["1"])?;
-    assert_output("print(1 < 2)", vec!["True"])?;
-    assert_output("print(1 > 2)", vec!["False"])?;
-    assert_output("print(5 > 0)", vec!["True"])?;
-    assert_output("print(1 == 2)", vec!["False"])?;
-    assert_output("print(1 >= 1)", vec!["True"])?;
-    assert_output("print(1 <= 1)", vec!["True"])?;
-    assert_output("print((1 > 2) or (1 < 2))", vec!["True"])?;
-    assert_output("print((1 > 2))\nprint((1 < 2))", vec!["False", "True"])?;
-    assert_output("print(1 if True else 2)", vec!["1"])?;
-    assert_output("print(1 if False else 2)", vec!["2"])?;
-    Ok(())
+fn test_exprs() {
+    assert_output("print(1 + 2)", vec!["3"]);
+    assert_output("print(1 - 2)", vec!["-1"]);
+    assert_output("print(-1)", vec!["-1"]);
+    assert_output("print(True)", vec!["True"]);
+    assert_output("print(not True)", vec!["False"]);
+    assert_output("print(False)", vec!["False"]);
+    assert_output("print(True or False)", vec!["True"]);
+    assert_output("1", vec![]);
+    assert_output("print(2 * 2)", vec!["4"]);
+    assert_output("print(2 // 2)", vec!["1"]);
+    assert_output("print(5 % 2)", vec!["1"]);
+    assert_output("print(1 < 2)", vec!["True"]);
+    assert_output("print(1 > 2)", vec!["False"]);
+    assert_output("print(5 > 0)", vec!["True"]);
+    assert_output("print(1 == 2)", vec!["False"]);
+    assert_output("print(1 >= 1)", vec!["True"]);
+    assert_output("print(1 <= 1)", vec!["True"]);
+    assert_output("print((1 > 2) or (1 < 2))", vec!["True"]);
+    assert_output("print((1 > 2))\nprint((1 < 2))", vec!["False", "True"]);
+    assert_output("print(1 if True else 2)", vec!["1"]);
+    assert_output("print(1 if False else 2)", vec!["2"]);
 }
 
 #[test]
-fn test_locals() -> anyhow::Result<()> {
-    assert_output("x: int = 1\nprint(x)", vec!["1"])?;
-    assert_output("x: int = 1\nprint(x)", vec!["1"])?;
-    assert_output("x: bool = False\nprint(x)", vec!["False"])?;
-    Ok(())
+fn test_locals() {
+    assert_output("x: int = 1\nprint(x)", vec!["1"]);
+    assert_output("x: int = 1\nprint(x)", vec!["1"]);
+    assert_output("x: bool = False\nprint(x)", vec!["False"]);
 }
 
 #[test]
-fn test_if() -> anyhow::Result<()> {
-    assert_output("if True:\n  print(1)", vec!["1"])?;
-    assert_output("if False:\n  print(1)\nelse:\n  print(2)", vec!["2"])?;
+fn test_if() {
+    assert_output("if True:\n  print(1)", vec!["1"]);
+    assert_output("if False:\n  print(1)\nelse:\n  print(2)", vec!["2"]);
     assert_output(
         "if False:\n  print(1)\nelif True:\n  print(3)\nelse:\n  print(2)",
         vec!["3"],
-    )?;
-    Ok(())
+    );
 }
 
 #[test]
-fn test_loop() -> anyhow::Result<()> {
+fn test_loop() {
     assert_output(
         "x: int = 5\nwhile x > 0:\n  print(x)\n  x = x - 1",
         vec!["5", "4", "3", "2", "1"],
-    )?;
-    Ok(())
+    );
+}
+
+#[test]
+fn test_strings() {
+    assert_output("print(\"hello world\")", vec!["hello world"]);
+    assert_output(
+        "x: str = \"abc\"\nprint(x)",
+        vec!["abc"]
+    );
 }

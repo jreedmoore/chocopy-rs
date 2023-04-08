@@ -8,12 +8,14 @@
 
 #[derive(Debug, Clone)]
 pub struct Program {
-    pub blocks: Vec<Block>
+    pub blocks: Vec<Block>,
+    pub consts: Vec<MemVal>,
 }
 impl Program {
     pub fn new() -> Program {
         Program {
             blocks: vec![],
+            consts: vec![],
         }
     }
 
@@ -35,6 +37,7 @@ impl Program {
 const FLATTEN_DEBUG: bool = false;
 #[derive(Debug, Clone)]
 pub struct FlatProgram {
+    pub consts: Vec<MemVal>,
     pub instrs: Vec<Instr<InstrLocation>>
 }
 impl FlatProgram {
@@ -49,7 +52,7 @@ impl FlatProgram {
             println!("{:?}\n{:?}", prog.blocks, block_offsets);
         }
 
-        let mut flat = FlatProgram { instrs: vec![] };
+        let mut flat = FlatProgram { instrs: vec![], consts: prog.consts };
         let mut instruction_pointer: usize = 0;
         for (idx, block) in prog.blocks.into_iter().enumerate() {
             for instr in block.instrs {
@@ -124,6 +127,7 @@ pub enum Instr<Loc> {
     // str might be represented as a pair of i32, but I could represent that as two different locals
     LoadLocal(usize),
     StoreLocal(usize),
+    LoadConstant(usize),
 }
 impl<A> Instr<A> {
     fn map<B, F>(self, f: F) -> Instr<B>
@@ -156,6 +160,7 @@ impl<A> Instr<A> {
             Nop => Nop,
             LoadLocal(i) => LoadLocal(i),
             StoreLocal(i) => StoreLocal(i),
+            LoadConstant(i) => LoadConstant(i),
         }
     }
 }
@@ -168,4 +173,9 @@ pub enum BlockLocation {
 #[derive(Debug, Clone)]
 pub enum InstrLocation {
     InstrOffset(isize),
+}
+#[derive(Debug, Clone)]
+pub enum MemVal {
+    Str(String),
+    Unused
 }

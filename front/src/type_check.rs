@@ -318,6 +318,7 @@ impl TypeChecker {
             Type::Id(id) => match id.name.as_str() {
                 "bool" => Ok(ChocoType::Bool),
                 "int" => Ok(ChocoType::Int),
+                "str" => Ok(ChocoType::Str),
                 _ => Err(TypeError::Todo),
             },
             Type::List(_) => todo!(),

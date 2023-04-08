@@ -1,6 +1,4 @@
-use std::fmt::Display;
-
-use middle::stack;
+use middle::stack::{self, MemVal};
 
 const VM_DEBUG: bool = false;
 
@@ -10,6 +8,9 @@ pub struct VM<S>
     print: Box<dyn FnMut(&mut S,String)>,
     instruction_pointer: usize,
     stack: Vec<VMVal>,
+    consts: Vec<MemVal>,
+    globals: Vec<MemVal>,
+    heap: Vec<MemVal>,
     pub s: S
 }
 impl<S> VM<S> 
@@ -59,8 +60,21 @@ impl<S> VM<S>
                     self.push(VMVal::Bool(l || r))
                 }
                 stack::Instr::Call(n) if n == "host_print" => {
-                    let v = self.pop().to_string();
-                    (self.print)(&mut self.s, v)
+                    let v = self.pop();
+                    let s = match v {
+                        VMVal::Number(n) => n.to_string(),
+                        VMVal::Bool(true) => "True".to_owned(),
+                        VMVal::Bool(false) => "False".to_owned(),
+                        VMVal::None => "None".to_owned(),
+                        VMVal::StrRef(idx) => {
+                            if let MemVal::Str(s) = &self.heap[idx] {
+                                s.to_owned()
+                            } else {
+                                panic!("expected string at heap location {:?}", idx);
+                            }
+                        }
+                    };
+                    (self.print)(&mut self.s, s)
                 }
                 stack::Instr::Call(_) => todo!(),
                 stack::Instr::Drop => { self.pop(); }
@@ -79,6 +93,15 @@ impl<S> VM<S>
                     }
                 },
                 stack::Instr::Nop => (),
+                stack::Instr::LoadConstant(i) => {
+                    let idx = self.heap.len();
+                    self.heap.push(p.consts[*i].clone());
+                    let stack_ref = match &p.consts[*i] {
+                        MemVal::Str(_) => VMVal::StrRef(idx),
+                        MemVal::Unused => panic!("Loading uninitialized constant"),
+                    };
+                    self.push(stack_ref);
+                }
            }
            self.instruction_pointer += 1;
         }
@@ -138,7 +161,7 @@ impl<S> VM<S>
 impl VM<IOMock> 
 {
     fn new_mock_io() -> VM<IOMock> {
-        VM { input: Box::new(|_| todo!()), print: Box::new(|mut mock,s| mock.output.push(s)), instruction_pointer: 0, s: IOMock { output: vec![] }, stack: vec![] }
+        VM { input: Box::new(|_| todo!()), print: Box::new(|mut mock,s| mock.output.push(s)), instruction_pointer: 0, s: IOMock { output: vec![] }, stack: vec![], consts: vec![], globals: vec![], heap: vec![] }
     }
 
     pub fn run_with_mock_io(p: &stack::FlatProgram) -> Vec<String> {
@@ -158,14 +181,5 @@ pub enum VMVal {
     Number(i32),
     Bool(bool),
     None,
-}
-impl Display for VMVal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            VMVal::Number(n) => write!(f, "{}", n),
-            VMVal::Bool(true) => write!(f, "True"),
-            VMVal::Bool(false) => write!(f, "False"),
-            VMVal::None => write!(f, "None"),
-        }
-    }
+    StrRef(usize)
 }
