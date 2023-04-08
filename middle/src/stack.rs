@@ -31,6 +31,8 @@ impl Program {
         }
     }
 }
+
+const FLATTEN_DEBUG: bool = false;
 #[derive(Debug, Clone)]
 pub struct FlatProgram {
     pub instrs: Vec<Instr<InstrLocation>>
@@ -43,7 +45,9 @@ impl FlatProgram {
             block_offsets.push(instruction_count);
             instruction_count += block.instrs.len() as isize;
         }
-        println!("{:?}\n{:?}", prog.blocks, block_offsets);
+        if FLATTEN_DEBUG {
+            println!("{:?}\n{:?}", prog.blocks, block_offsets);
+        }
 
         let mut flat = FlatProgram { instrs: vec![] };
         let mut instruction_pointer: usize = 0;
@@ -55,7 +59,9 @@ impl FlatProgram {
                         let block_begin = block_offsets[dest_idx];
                         // -1 because we want to exclude the jump instruction itself from the offset
                         let instr_offset = (block_begin as isize) - (instruction_pointer as isize) - 1;
-                        println!("BlockOffset {} from blocks {} to {}, from instr {} to {}, offset = {}", off, idx, dest_idx, instruction_pointer, block_begin, instr_offset);
+                        if FLATTEN_DEBUG {
+                            println!("BlockOffset {} from blocks {} to {}, from instr {} to {}, offset = {}", off, idx, dest_idx, instruction_pointer, block_begin, instr_offset);
+                        }
                         InstrLocation::InstrOffset(instr_offset)
                     }
                 }));

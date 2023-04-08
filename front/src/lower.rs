@@ -101,16 +101,14 @@ impl Lower {
                 }
             }
             Statement::While { cond, stmts } => {
-                todo!();
-                /*
-                self.lower_expr(cond);
-                self.push_instr(Instr::Loop);
-                stmts.iter().for_each(|s| self.lower_statement(s));
+                self.start_block();
                 self.lower_expr(cond);
                 self.push_instr(Instr::UnaryNot);
-                self.push_instr(Instr::BrIf);
-                self.push_instr(Instr::EndLoop);
-                */
+                self.push_instr(Instr::IfJump(BlockLocation::BlockOffset(1)));
+                stmts.iter().for_each(|s| self.lower_statement(s));
+                self.push_instr(Instr::Jump(BlockLocation::BlockOffset(0)));
+                self.start_block();
+                
             }
         }
     }
