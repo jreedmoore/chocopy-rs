@@ -64,6 +64,7 @@ fn test_loop() {
 #[test]
 fn test_strings() {
     assert_output("print(\"hello world\")", vec!["hello world"]);
+    assert_output("print(\"hello \" + \"world\")", vec!["hello world"]);
     assert_output(
         "x: str = \"abc\"\nprint(x)",
         vec!["abc"]

@@ -94,13 +94,20 @@ impl<S> VM<S>
                 },
                 stack::Instr::Nop => (),
                 stack::Instr::LoadConstant(i) => {
-                    let idx = self.heap.len();
-                    self.heap.push(p.consts[*i].clone());
+                    let idx = self.alloc(p.consts[*i].clone());
                     let stack_ref = match &p.consts[*i] {
                         MemVal::Str(_) => VMVal::StrRef(idx),
                         MemVal::Unused => panic!("Loading uninitialized constant"),
                     };
                     self.push(stack_ref);
+                }
+                stack::Instr::ConcatStr => {
+                    let r = self.pop_str();
+                    let l = self.pop_str();
+                    let mut s = self.heap_as_str(l).to_owned();
+                    s.push_str(self.heap_as_str(r));
+                    let idx = self.alloc(MemVal::Str(s));
+                    self.push(VMVal::StrRef(idx))
                 }
            }
            self.instruction_pointer += 1;
@@ -139,7 +146,7 @@ impl<S> VM<S>
     }
 
     fn pop_bool(&mut self) -> bool {
-        if let VMVal::Bool(b) = self.stack.pop().expect("non empty stack") {
+        if let VMVal::Bool(b) = self.pop() {
             b
         } else {
             panic!("expected bool on stack")
@@ -147,15 +154,42 @@ impl<S> VM<S>
     }
 
     fn pop_num(&mut self) -> i32 {
-        if let VMVal::Number(n) = self.stack.pop().expect("non empty stack") {
+        if let VMVal::Number(n) = self.pop() {
             n
         } else {
             panic!("expected bool on stack")
         }
     }
 
+    fn pop_str(&mut self) -> usize {
+        if let VMVal::StrRef(idx) = self.pop() {
+            idx 
+        } else {
+            panic!("expected str ref on stack")
+        }
+    }
+
     fn push(&mut self, v: VMVal) {
         self.stack.push(v)
+    }
+
+    fn heap_as_str(&self, idx: usize) -> &str {
+        match &self.heap[idx] {
+            MemVal::Str(s) => s.as_str(),
+            MemVal::Unused => panic!("expected Str on heap, got Unused")
+        }
+    }
+
+
+    fn alloc(&mut self, m: MemVal) -> usize {
+        let idx = self.heap.len();
+        self.heap.push(m);
+        idx
+    }
+
+    fn free(&mut self, idx: usize) {
+        // previously held value should be dropped?
+        self.heap[idx] = MemVal::Unused;
     }
 }
 impl VM<IOMock> 

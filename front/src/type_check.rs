@@ -133,7 +133,12 @@ impl TypeChecker {
                 };
                 let rel_type = al.choco_type();
                 let res_type = match op {
-                    ast::BinOp::Plus
+                    ast::BinOp::Plus => {
+                        match rel_type {
+                            ChocoType::Int | ChocoType::Str => Ok(rel_type),
+                            _ => Err(TypeError::TypeMismatch { expected: ChocoType::Int, actual: rel_type })
+                        }
+                    }
                     | ast::BinOp::Minus
                     | ast::BinOp::Multiply
                     | ast::BinOp::IntegerDiv
@@ -144,9 +149,9 @@ impl TypeChecker {
                                 actual: rel_type,
                             });
                         }
-                        ChocoType::Int
+                        Ok(ChocoType::Int)
                     }
-                    ast::BinOp::Equals | ast::BinOp::NotEquals => ChocoType::Bool,
+                    ast::BinOp::Equals | ast::BinOp::NotEquals => Ok(ChocoType::Bool),
                     ast::BinOp::LessThan
                     | ast::BinOp::LessThanEqual
                     | ast::BinOp::GreaterThan
@@ -157,12 +162,12 @@ impl TypeChecker {
                                 actual: rel_type,
                             });
                         }
-                        ChocoType::Bool
+                        Ok(ChocoType::Bool)
                     }
 
                     ast::BinOp::Is => todo!(),
                     ast::BinOp::And | ast::BinOp::Or => unreachable!(),
-                };
+                }?;
                 Ok(annotated_ast::Expression::Binary {
                     op: *op,
                     l: Box::new(al),

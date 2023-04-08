@@ -143,7 +143,15 @@ impl Lower {
                 self.lower_expr(e);
                 self.push_instr(Instr::UnaryNot);
             }
-            Expression::Binary { op, l, r, .. } => {
+            Expression::Binary { op, l, r, choco_type: ChocoType::Str } => {
+                self.lower_expr(l);
+                self.lower_expr(r);
+                self.push_instr(match op {
+                    ast::BinOp::Plus => Instr::ConcatStr,
+                    _ => panic!("Unsupported op for strings")
+                })
+            }
+            Expression::Binary { op, l, r, choco_type: ChocoType::Int | ChocoType::Bool } => {
                 self.lower_expr(l);
                 self.lower_expr(r);
                 self.push_instr(match op {
@@ -166,6 +174,7 @@ impl Lower {
                     crate::ast::BinOp::Is => todo!(),
                 });
             }
+            Expression::Binary { choco_type, .. } => todo!("Unsupported type {:?}", choco_type),
             Expression::Call { f, params, .. } => {
                 params.iter().for_each(|p| self.lower_expr(p));
                 self.push_instr(Instr::Call(f.name.clone()))

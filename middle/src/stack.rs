@@ -122,9 +122,8 @@ pub enum Instr<Loc> {
     IfJump(Loc),
     Nop,
 
-    // should these have types?
-    // for now everything is an i32 in WASM
-    // str might be represented as a pair of i32, but I could represent that as two different locals
+    ConcatStr,
+
     LoadLocal(usize),
     StoreLocal(usize),
     LoadConstant(usize),
@@ -161,6 +160,7 @@ impl<A> Instr<A> {
             LoadLocal(i) => LoadLocal(i),
             StoreLocal(i) => StoreLocal(i),
             LoadConstant(i) => LoadConstant(i),
+            ConcatStr => ConcatStr,
         }
     }
 }
