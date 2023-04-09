@@ -16,7 +16,7 @@ impl ChocoType {
         match self {
             ChocoType::Str => true,
             ChocoType::None => true,
-            _ => false
+            _ => false,
         }
     }
 }
@@ -32,6 +32,8 @@ pub enum TypeError {
     EmptyTargets,
     CannotRebindLocal(String),
     ExpectedRef,
+    CannotTreatFunsAsLocals,
+    NotBoundAsVar,
 }
 impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -49,12 +51,28 @@ impl std::error::Error for TypeError {
 }
 
 struct TypeEnvironment {
-    bindings: HashMap<String, annotated_ast::Var>,
+    bindings: HashMap<String, TypeBinding>,
 }
 impl TypeEnvironment {
     pub fn new() -> TypeEnvironment {
         TypeEnvironment {
             bindings: HashMap::new(),
+        }
+    }
+}
+
+pub enum TypeBinding {
+    V(annotated_ast::Var),
+    Fun {
+        params: Vec<ChocoType>,
+        result: ChocoType,
+    },
+}
+impl TypeBinding {
+    fn as_var(&self) -> Result<&annotated_ast::Var, TypeError> {
+        match self {
+            TypeBinding::V(v) => Ok(v),
+            _ => Err(TypeError::NotBoundAsVar),
         }
     }
 }
@@ -176,12 +194,13 @@ impl TypeChecker {
                         Ok(ChocoType::Bool)
                     }
 
-                    ast::BinOp::Is => 
+                    ast::BinOp::Is => {
                         if rel_type.is_ref() {
                             Ok(ChocoType::Bool)
                         } else {
                             Err(TypeError::ExpectedRef)
                         }
+                    }
                     ast::BinOp::And | ast::BinOp::Or => unreachable!(),
                 }?;
                 Ok(annotated_ast::Expression::Binary {
@@ -381,7 +400,17 @@ impl TypeChecker {
                     },
                 )])
             }
-            ast::Definition::Func(_) => todo!(),
+            ast::Definition::Func(fun) => {
+                self.push_environment();
+                for param in &fun.params {
+                    self.add_local(param.id.name.clone(), self.resolve_type(&param.typ)?)?;
+                }
+                // todo: &fun.decls
+                //for def in &fun.
+
+                // do I need a CFG to determine if this function returns?
+                todo!()
+            }
             ast::Definition::Class(_) => todo!(),
         }
     }
@@ -404,6 +433,10 @@ impl TypeChecker {
             .bindings
             .get(name)
             .ok_or(TypeError::NotBound(name.to_owned()))
+            .and_then(|tb| match tb {
+                TypeBinding::V(v) => Ok(v),
+                TypeBinding::Fun { .. } => Err(TypeError::CannotTreatFunsAsLocals),
+            })
     }
 
     fn add_local(
@@ -428,15 +461,13 @@ impl TypeChecker {
                 .last_mut()
                 .unwrap()
                 .bindings
-                .insert(name.clone(), v);
-            Ok(self
-                .environments
-                .last()
-                .unwrap()
-                .bindings
-                .get(&name)
-                .unwrap())
+                .insert(name.clone(), TypeBinding::V(v));
+            self.environments.last().unwrap().bindings[&name].as_var()
         }
+    }
+
+    fn push_environment(&mut self) {
+        todo!()
     }
 }
 
@@ -541,5 +572,13 @@ mod tests {
         parse_and_type_check("if True:\n  print(1)\nelse:\n  print(2)").unwrap();
         parse_and_type_check("if True:\n  1\nelif False:\n  2\nelse:\n  3").unwrap();
         assert_fails_type_check("if 0:\n  print(1)");
+    }
+
+    #[test]
+    fn test_functions() {
+        assert_eq!(
+            parse_and_type_check("def f(x: int) -> int:\n  return x\nf(1)").unwrap(),
+            ChocoType::Int
+        )
     }
 }

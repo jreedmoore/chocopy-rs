@@ -7,6 +7,8 @@ use std::collections::VecDeque;
 use crate::ast;
 use crate::lexer::{self, Lexer, Span, Token};
 
+const DEBUG_PARSER: bool = false;
+
 /// Recursive descent parser with 2 lookahead tokens
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
@@ -65,6 +67,8 @@ impl<'a> Parser<'a> {
                 expected: Some(expected),
                 during,
             })
+        } else {
+            self.error(ParseError::UnexpectedEof(during))
         }
         None
     }
@@ -124,12 +128,21 @@ impl<'a> Parser<'a> {
     fn advance(&mut self, during: &'static str) -> Option<Token> {
         if let Some(span) = self.peek.pop_front() {
             self.current = Some(span.clone());
+            if DEBUG_PARSER {
+                println!("advance from peek: {}: {:?}", during, span.token);
+            }
             Some(span.token)
         } else {
             if let Some(span) = self.get_next() {
                 self.current = Some(span.clone());
+                if DEBUG_PARSER {
+                    println!("advance from lexer: {}: {:?}", during, span.token);
+                }
                 Some(span.token)
             } else {
+                if DEBUG_PARSER {
+                    println!("advance eof {}", during);
+                }
                 self.error(ParseError::UnexpectedEof(during));
                 None
             }
@@ -875,7 +888,7 @@ mod tests {
     #[test]
     fn test_one() {
         //assert_parses("1")
-        assert_parses("class Foo(object):\n  x:int=0\n  y:int=None");
+        assert_parses("def f(x: int):\n  pass");
         //assert_parses("a < len(b)");
         //assert_parses("1 + 2 * 3 + 4");
     }
@@ -910,5 +923,7 @@ mod tests {
         assert_parses("if True:\n  True\nelse:\n  False");
         assert_parses("a()");
         assert_parses("return f(y)\n");
+        assert_parses("def f(x: int):\n  pass");
+        assert_parses("def f(x: int):\n  y: int = 0");
     }
 }

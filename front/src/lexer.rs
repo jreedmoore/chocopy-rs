@@ -195,10 +195,11 @@ impl<'a> Lexer<'a> {
         loop {
             if let Some(c) = self.peek() {
                 let c = *c; // copy for the borrowck gods
-                            // line state machine
-                            // start transitions to Indent on whitespace, Logical on non-whitespace/non-comment
-                            // Indent emits on non-EOL
-                            // Logical transitions to Start on EOL
+
+                // line state machine
+                // start transitions to Indent on whitespace, Logical on non-whitespace/non-comment
+                // Indent emits on non-EOL
+                // Logical transitions to Start on EOL
                 match self.line_state {
                     LineState::Start if c.is_whitespace() => {
                         self.line_state = LineState::Indent(self.scan_indent()?);
@@ -345,6 +346,11 @@ impl<'a> Lexer<'a> {
                     // eof is implicit new line
                     self.line_state = LineState::Start;
                     return self.span(Token::Newline);
+                }
+
+                if self.indent_stack.len() > 1 {
+                    self.indent_stack.pop();
+                    return self.span(Token::Dedent);
                 }
 
                 break;
@@ -710,12 +716,13 @@ mod tests {
                 Assign,
                 Integer(0),
                 Newline,
+                Dedent,
             ],
         );
         assert_lex_eq(
             "if True:\n  False\n  # foo\n  False",
             vec![
-                If, True, Colon, Newline, Indent, False, Newline, False, Newline,
+                If, True, Colon, Newline, Indent, False, Newline, False, Newline, Dedent,
             ],
         );
     }
