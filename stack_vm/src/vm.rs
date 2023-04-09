@@ -17,6 +17,7 @@ impl<S> VM<S> {
         if VM_DEBUG {
             println!("IR: {:?}", p.instrs);
         }
+        self.instruction_pointer = p.start;
         loop {
             if self.instruction_pointer >= p.instrs.len() {
                 break;
@@ -88,18 +89,10 @@ impl<S> VM<S> {
                     let v = self.pop();
                     self.stack[*idx] = v;
                 }
-                stack::Instr::Jump(stack::InstrLocation::InstrOffset(off)) => {
-                    self.instruction_pointer = self
-                        .instruction_pointer
-                        .checked_add_signed(*off)
-                        .expect("ip overflow")
-                }
-                stack::Instr::IfJump(stack::InstrLocation::InstrOffset(off)) => {
+                stack::Instr::Jump(loc) => loc.update(&mut self.instruction_pointer),
+                stack::Instr::IfJump(loc) => {
                     if self.pop_bool() {
-                        self.instruction_pointer = self
-                            .instruction_pointer
-                            .checked_add_signed(*off)
-                            .expect("ip overflow")
+                        loc.update(&mut self.instruction_pointer)
                     }
                 }
                 stack::Instr::Nop => (),

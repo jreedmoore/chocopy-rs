@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::annotated_ast::ChocoTyped;
+use crate::annotated_ast::{ChocoTyped, Function};
 use crate::ast::Type;
 use crate::{annotated_ast, ast};
 
@@ -79,11 +79,15 @@ impl TypeBinding {
 
 pub struct TypeChecker {
     environments: Vec<TypeEnvironment>,
+    funs: Vec<Function>,
+    program: annotated_ast::Program,
 }
 impl TypeChecker {
     pub fn new() -> TypeChecker {
         TypeChecker {
             environments: vec![TypeEnvironment::new()],
+            funs: vec![],
+            program: annotated_ast::Program::new()
         }
     }
 
@@ -378,35 +382,41 @@ impl TypeChecker {
         }
     }
 
+    fn check_var_def(&mut self, def: &ast::VariableDef) -> Result<Vec<annotated_ast::Statement>, TypeError> {
+        let bound_type = self.resolve_type(&def.var.typ)?;
+        let init = def.literal.choco_type();
+        if bound_type != init {
+            return Err(TypeError::TypeMismatch {
+                expected: bound_type,
+                actual: init,
+            });
+        }
+        let v = self.add_local(def.var.id.name.clone(), bound_type)?.clone();
+        Ok(vec![annotated_ast::Statement::Declare(
+            v,
+            annotated_ast::Expression::Lit {
+                l: def.literal.clone(),
+            },
+        )])
+    }
+
     fn check_def(
         &mut self,
         def: &ast::Definition,
     ) -> Result<Vec<annotated_ast::Statement>, TypeError> {
         match def {
             ast::Definition::Var(def) => {
-                let bound_type = self.resolve_type(&def.var.typ)?;
-                let init = def.literal.choco_type();
-                if bound_type != init {
-                    return Err(TypeError::TypeMismatch {
-                        expected: bound_type,
-                        actual: init,
-                    });
-                }
-                let v = self.add_local(def.var.id.name.clone(), bound_type)?.clone();
-                Ok(vec![annotated_ast::Statement::Declare(
-                    v,
-                    annotated_ast::Expression::Lit {
-                        l: def.literal.clone(),
-                    },
-                )])
+                self.check_var_def(&def) 
             }
             ast::Definition::Func(fun) => {
-                self.push_environment();
+                self.start_fun(fun.id.name.clone(), fun.params.clone(), fun.return_type.clone().map(|t| self.resolve_type(&t)).unwrap_or(Ok(ChocoType::None))?);
                 for param in &fun.params {
                     self.add_local(param.id.name.clone(), self.resolve_type(&param.typ)?)?;
                 }
                 // todo: &fun.decls
-                //for def in &fun.
+                for var in &fun.vars {
+                    self.check_var_def(var)?;
+                }
 
                 // do I need a CFG to determine if this function returns?
                 todo!()
@@ -415,15 +425,18 @@ impl TypeChecker {
         }
     }
 
-    pub fn check_prog(&mut self, p: &ast::Program) -> Result<annotated_ast::Program, TypeError> {
-        let mut stmts = vec![];
+    pub fn check_prog(&mut self, p: &ast::Program) -> Result<&annotated_ast::Program, TypeError> {
+        self.start_fun("entry".to_owned(), vec![], ChocoType::None);
         for def in &p.defs {
-            stmts.append(&mut self.check_def(def)?);
+            let stmt = &mut self.check_def(def)?;
+            self.append_statements(stmt);
         }
         for stmt in &p.stmts {
-            stmts.append(&mut self.check_stmt(&stmt)?)
+            let stmt = &mut self.check_stmt(&stmt)?;
+            self.append_statements(stmt);
         }
-        Ok(annotated_ast::Program { stmts })
+        self.finish_fun();
+        Ok(&self.program)
     }
 
     fn get_local(&self, name: &str) -> Result<&annotated_ast::Var, TypeError> {
@@ -469,6 +482,22 @@ impl TypeChecker {
     fn push_environment(&mut self) {
         todo!()
     }
+
+    fn start_fun(&mut self, name: String, params: Vec<ast::TypedVar>, result_type: ChocoType) {
+        self.funs.push(Function::new(name, params, result_type))
+    }
+
+    fn finish_fun(&mut self) {
+        let f = self.funs.pop().expect("function stack empty");
+        self.program.funs.push(f);
+    }
+
+    fn append_statements(&mut self, stmts: &mut Vec<annotated_ast::Statement>) {
+        self.funs.last_mut().unwrap().body.append(stmts)
+    }
+    fn push_statement(&mut self, stmt: annotated_ast::Statement) {
+        self.funs.last_mut().unwrap().body.push(stmt)
+    }
 }
 
 #[cfg(test)]
@@ -489,7 +518,7 @@ mod tests {
 
         let mut typeck = TypeChecker::new();
         let ann_prog = typeck.check_prog(&prog)?;
-        if let Some(annotated_ast::Statement::Expr(e)) = ann_prog.stmts.last() {
+        if let Some(annotated_ast::Statement::Expr(e)) = ann_prog.funs.first().unwrap().body.last() {
             Ok(e.choco_type())
         } else {
             Ok(ChocoType::None)

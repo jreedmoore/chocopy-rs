@@ -51,9 +51,11 @@ impl Lower {
     }
 
     pub fn lower_prog(&mut self, prog: &annotated_ast::Program) -> &stack::Program {
-        self.lowered.start_block();
-        for stmt in &prog.stmts {
-            self.lower_statement(&stmt);
+        for fun in &prog.funs {
+            self.lowered.start_named_block(fun.name.clone());
+            for stmt in &fun.body {
+                self.lower_statement(&stmt);
+            }
         }
         self.lowered.insert_nop();
         &self.lowered

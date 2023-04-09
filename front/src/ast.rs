@@ -34,12 +34,12 @@ pub enum Declaration {
     NonLocal(Identifier),
     Global(Identifier),
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypedVar {
     pub id: Identifier,
     pub typ: Type,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Type {
     Id(Identifier),
     List(Box<Type>),

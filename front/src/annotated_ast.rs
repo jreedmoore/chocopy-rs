@@ -1,7 +1,12 @@
-use crate::{ast, type_check::ChocoType};
+use crate::{ast::{self, TypedVar}, type_check::ChocoType};
 
 pub struct Program {
-    pub stmts: Vec<Statement>,
+    pub funs: Vec<Function>,
+}
+impl Program {
+    pub(crate) fn new() -> Program {
+        Program { funs: vec![] }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +81,18 @@ impl ChocoTyped for ast::Literal {
             ast::Literal::None => ChocoType::None,
             ast::Literal::Str(_) | ast::Literal::IdStr(_) => ChocoType::Str,
         }
+    }
+}
+#[derive(Debug, Clone)]
+pub struct Function {
+    pub name: String,
+    pub params: Vec<TypedVar>,
+    pub return_type: ChocoType,
+    pub body: Vec<Statement>
+}
+impl Function {
+    pub(crate) fn new(name: String, params: Vec<TypedVar>, return_type: ChocoType) -> Function {
+        Function { name, params, return_type, body: vec![] } 
     }
 }
 
