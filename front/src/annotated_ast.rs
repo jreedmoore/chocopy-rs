@@ -1,4 +1,7 @@
-use crate::{ast::{self, TypedVar}, type_check::ChocoType};
+use crate::{
+    ast::{self, TypedVar},
+    type_check::ChocoType,
+};
 
 pub struct Program {
     pub funs: Vec<Function>,
@@ -23,6 +26,7 @@ pub enum Statement {
         cond: Expression,
         stmts: Vec<Statement>,
     },
+    Return(Option<Box<Expression>>),
 }
 
 #[derive(Debug, Clone)]
@@ -36,6 +40,7 @@ pub enum Expression {
     Call {
         f: FunId,
         params: Vec<Expression>,
+        native: bool,
         choco_type: ChocoType,
     },
     Lit {
@@ -86,13 +91,23 @@ impl ChocoTyped for ast::Literal {
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
-    pub params: Vec<TypedVar>,
+    pub params: Vec<Param>,
     pub return_type: ChocoType,
-    pub body: Vec<Statement>
+    pub body: Vec<Statement>,
+}
+#[derive(Debug, Clone)]
+pub struct Param {
+    pub name: String,
+    pub choco_type: ChocoType,
 }
 impl Function {
-    pub(crate) fn new(name: String, params: Vec<TypedVar>, return_type: ChocoType) -> Function {
-        Function { name, params, return_type, body: vec![] } 
+    pub(crate) fn new(name: String, params: Vec<Param>, return_type: ChocoType) -> Function {
+        Function {
+            name,
+            params,
+            return_type,
+            body: vec![],
+        }
     }
 }
 

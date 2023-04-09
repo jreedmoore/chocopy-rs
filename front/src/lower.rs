@@ -37,6 +37,11 @@ impl Locals {
             bindings: HashMap::new(),
         }
     }
+
+    fn clear(&mut self) {
+        self.bindings.clear();
+        self.max_used = 0;
+    }
 }
 pub struct Lower {
     lowered: stack::Program,
@@ -52,9 +57,16 @@ impl Lower {
 
     pub fn lower_prog(&mut self, prog: &annotated_ast::Program) -> &stack::Program {
         for fun in &prog.funs {
+            self.locals.clear();
+            for p in &fun.params {
+                self.upsert_local(&p.name);
+            }
             self.lowered.start_named_block(fun.name.clone());
             for stmt in &fun.body {
                 self.lower_statement(&stmt);
+            }
+            if fun.name != "entry" {
+                self.push_instr(Instr::Return)
             }
         }
         self.lowered.insert_nop();
@@ -65,9 +77,6 @@ impl Lower {
         match stmt {
             annotated_ast::Statement::Expr(e) => {
                 self.lower_expr(e);
-                if e.choco_type() != ChocoType::None {
-                    self.push_instr(stack::Instr::Drop)
-                }
             }
             Statement::Assign(Var::Local { name, .. }, e) => {
                 let index = self.upsert_local(name);
@@ -110,6 +119,12 @@ impl Lower {
                 stmts.iter().for_each(|s| self.lower_statement(s));
                 self.push_instr(Instr::Jump(BlockLocation::BlockOffset(0)));
                 self.start_block();
+            }
+            Statement::Return(e) => {
+                if let Some(e) = e {
+                    self.lower_expr(e);
+                }
+                self.push_instr(Instr::Return);
             }
         }
     }
@@ -207,9 +222,18 @@ impl Lower {
                     crate::ast::BinOp::Is => Instr::Is,
                 });
             }
-            Expression::Call { f, params, .. } => {
+            Expression::Call {
+                f, params, native, ..
+            } => {
                 params.iter().for_each(|p| self.lower_expr(p));
-                self.push_instr(Instr::Call(f.name.clone()))
+                if *native {
+                    self.push_instr(Instr::CallNative(f.name.clone()))
+                } else {
+                    self.push_instr(Instr::Call {
+                        loc: BlockLocation::Named(f.name.clone()),
+                        arity: params.len(),
+                    })
+                }
             }
             Expression::Ternary {
                 cond, then, els, ..

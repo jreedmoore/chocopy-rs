@@ -67,3 +67,12 @@ fn test_strings() {
     assert_output("print(\"abc\" == \"abc\")", vec!["True"]);
     assert_output("print(\"abc\" is \"abc\")", vec!["False"]);
 }
+
+#[test]
+fn test_functions() {
+    assert_output("def f(x: int) -> int:\n  x + 1\nprint(f(1))", vec!["2"]);
+    assert_output(
+        "def f(x: int) -> int:\n  x + 1\ndef g(y: int) -> int:\n  return f(y * 2)\nprint(g(1))",
+        vec!["3"],
+    );
+}

@@ -2,11 +2,18 @@ use middle::stack::{self, MemVal};
 
 const VM_DEBUG: bool = false;
 
+pub struct CallFrame {
+    return_ip: usize,
+    return_stack_base: usize,
+}
+
 pub struct VM<S> {
     input: Box<dyn FnMut(&mut S) -> String>,
     print: Box<dyn FnMut(&mut S, String)>,
     instruction_pointer: usize,
     stack: Vec<VMVal>,
+    stack_base: usize,
+    call_stack: Vec<CallFrame>,
     consts: Vec<MemVal>,
     globals: Vec<MemVal>,
     heap: Vec<MemVal>,
@@ -28,7 +35,9 @@ impl<S> VM<S> {
                     self.instruction_pointer, &p.instrs[self.instruction_pointer]
                 );
             }
-            match &p.instrs[self.instruction_pointer] {
+            let instr = &p.instrs[self.instruction_pointer];
+            self.instruction_pointer += 1;
+            match instr {
                 stack::Instr::NumConst(n) => self.push(VMVal::Number(*n)),
                 stack::Instr::BoolConst(b) => self.push(VMVal::Bool(*b)),
                 stack::Instr::NoneConst => self.push(VMVal::None),
@@ -60,7 +69,7 @@ impl<S> VM<S> {
                     let l = self.pop_bool();
                     self.push(VMVal::Bool(l || r))
                 }
-                stack::Instr::Call(n) if n == "host_print" => {
+                stack::Instr::CallNative(n) if n == "host_print" => {
                     let v = self.pop();
                     let s = match v {
                         VMVal::Number(n) => n.to_string(),
@@ -77,17 +86,35 @@ impl<S> VM<S> {
                     };
                     (self.print)(&mut self.s, s)
                 }
-                stack::Instr::Call(_) => todo!(),
+                stack::Instr::Call { loc, arity } => {
+                    self.call_stack.push(CallFrame {
+                        return_ip: self.instruction_pointer,
+                        return_stack_base: self.stack_base,
+                    });
+                    self.stack_base = self.stack.len() - arity;
+                    loc.update(&mut self.instruction_pointer);
+                }
+                stack::Instr::Return => {
+                    let return_val = self.pop();
+                    let frame = self
+                        .call_stack
+                        .pop()
+                        .expect("returning from top-level function");
+                    self.stack.truncate(self.stack_base);
+                    self.stack_base = frame.return_stack_base;
+                    self.instruction_pointer = frame.return_ip;
+                    self.push(return_val);
+                }
                 stack::Instr::Drop => {
                     self.pop();
                 }
                 stack::Instr::LoadLocal(idx) => {
-                    let v = self.stack[*idx];
+                    let v = self.stack[*idx + self.stack_base];
                     self.push(v)
                 }
                 stack::Instr::StoreLocal(idx) => {
                     let v = self.pop();
-                    self.stack[*idx] = v;
+                    self.stack[*idx + self.stack_base] = v;
                 }
                 stack::Instr::Jump(loc) => loc.update(&mut self.instruction_pointer),
                 stack::Instr::IfJump(loc) => {
@@ -130,8 +157,8 @@ impl<S> VM<S> {
                     let l = self.pop();
                     self.push(VMVal::Bool(l == r && l.is_ref() && r.is_ref()));
                 }
+                stack::Instr::CallNative(n) => todo!("Unsupported native call: {}", n),
             }
-            self.instruction_pointer += 1;
         }
     }
 
@@ -228,6 +255,8 @@ impl VM<IOMock> {
             instruction_pointer: 0,
             s: IOMock { output: vec![] },
             stack: vec![],
+            stack_base: 0,
+            call_stack: vec![],
             consts: vec![],
             globals: vec![],
             heap: vec![],

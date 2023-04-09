@@ -66,7 +66,9 @@ impl FlatProgram {
         }
 
         let start = if let BlockLocation::Named(name) = prog.start {
-            block_offsets[*block_names.get(&name).expect("start references undeclared block")] as usize
+            block_offsets[*block_names
+                .get(&name)
+                .expect("start references undeclared block")] as usize
         } else {
             panic!("Unexpected BlockLocation type for start")
         };
@@ -83,7 +85,7 @@ impl FlatProgram {
                     BlockLocation::BlockOffset(off) => {
                         let dest_idx = idx.checked_add_signed(off).expect("block pointer overflow");
                         let block_begin = block_offsets[dest_idx];
-                        // -1 because we want to exclude the jump instruction itself from the offset
+                        // -1 because IP is _next_ instruction
                         let instr_offset = (block_begin as isize) - (instruction_pointer as isize) - 1;
                         if FLATTEN_DEBUG {
                             println!("BlockOffset {} from blocks {} to {}, from instr {} to {}, offset = {}", off, idx, dest_idx, instruction_pointer, block_begin, instr_offset);
@@ -111,11 +113,17 @@ pub struct Block {
 }
 impl Block {
     fn new() -> Block {
-        Block { label: None, instrs: vec![] }
+        Block {
+            label: None,
+            instrs: vec![],
+        }
     }
 
     fn named(name: String) -> Block {
-        Block { label: Some(name), instrs: vec![] }
+        Block {
+            label: Some(name),
+            instrs: vec![],
+        }
     }
 }
 
@@ -143,7 +151,8 @@ pub enum Instr<Loc> {
     Gt,
     Gte,
 
-    Call(String),
+    CallNative(String),
+    Call { loc: Loc, arity: usize },
 
     Drop,
 
@@ -160,6 +169,7 @@ pub enum Instr<Loc> {
     // expects [StrRef Int] on stack
     StrIndex,
     Is,
+    Return,
 }
 impl<A> Instr<A> {
     fn map<B, F>(self, f: F) -> Instr<B>
@@ -186,7 +196,9 @@ impl<A> Instr<A> {
             Gt => Gt,
             Gte => Gte,
             Is => Is,
-            Call(f) => Call(f),
+            CallNative(f) => CallNative(f),
+            Call { loc, arity } => Call { loc: f(loc), arity },
+            Return => Return,
             Drop => Drop,
             Jump(a) => Jump(f(a)),
             IfJump(a) => IfJump(f(a)),
@@ -214,7 +226,11 @@ pub enum InstrLocation {
 impl InstrLocation {
     pub fn update(&self, instruction_pointer: &mut usize) {
         match self {
-            InstrLocation::InstrOffset(off) => *instruction_pointer = instruction_pointer.checked_add_signed(*off).expect("ip overflow"),
+            InstrLocation::InstrOffset(off) => {
+                *instruction_pointer = instruction_pointer
+                    .checked_add_signed(*off)
+                    .expect("ip overflow")
+            }
             InstrLocation::InstrAbsolute(new_ip) => *instruction_pointer = *new_ip,
         }
     }
