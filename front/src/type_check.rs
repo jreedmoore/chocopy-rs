@@ -589,7 +589,8 @@ mod tests {
 
         let mut typeck = TypeChecker::new();
         let ann_prog = typeck.check_prog(&prog)?;
-        if let Some(annotated_ast::Statement::Expr(e)) = ann_prog.funs.first().unwrap().body.last()
+        let entry = ann_prog.funs.iter().find(|f| f.name == "entry");
+        if let Some(annotated_ast::Statement::Expr(e)) = entry.unwrap().body.last()
         {
             Ok(e.choco_type())
         } else {
