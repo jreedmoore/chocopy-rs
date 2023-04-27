@@ -20,6 +20,11 @@ impl ChocoType {
         }
     }
 }
+impl ChocoTyped for ChocoType {
+    fn choco_type(&self) -> ChocoType {
+        self.clone()
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
@@ -34,6 +39,7 @@ pub enum TypeError {
     ExpectedRef,
     CannotTreatFunsAsLocals,
     NotBoundAsVar,
+    ReturnOutsideOfFunction,
 }
 impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -316,10 +322,14 @@ impl TypeChecker {
             )]),
             ast::Statement::Pass => todo!(),
             ast::Statement::Return(e) => {
+                let expected_type = self.current_fun().ok_or(TypeError::ReturnOutsideOfFunction)?.return_type;
+
                 if let Some(e) = e {
                     let e = self.check_expression(e)?;
+                    TypeChecker::match_type(expected_type, e.choco_type())?;
                     Ok(vec![annotated_ast::Statement::Return(Some(Box::new(e)))])
                 } else {
+                    TypeChecker::match_type(expected_type, ChocoType::None)?;
                     Ok(vec![annotated_ast::Statement::Return(None)])
                 }
             }
@@ -556,6 +566,10 @@ impl TypeChecker {
         self.program.funs.push(f);
     }
 
+    fn current_fun(&self) -> Option<&annotated_ast::Function> {
+        self.funs.last().filter(|f| f.name != "entry")
+    }
+
     fn append_statements(&mut self, stmts: &mut Vec<annotated_ast::Statement>) {
         self.funs.last_mut().unwrap().body.append(stmts)
     }
@@ -681,6 +695,8 @@ mod tests {
         assert_eq!(
             parse_and_type_check("def f(x: int) -> int:\n  return x\nf(1)").unwrap(),
             ChocoType::Int
-        )
+        );
+        assert_fails_type_check("return");
+        assert_fails_type_check("def f() -> int\n  return False");
     }
 }
