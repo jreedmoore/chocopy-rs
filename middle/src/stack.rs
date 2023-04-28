@@ -10,39 +10,52 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct Program {
-    pub start: BlockLocation,
-    pub blocks: Vec<Block>,
+    pub start: String,
+    pub funcs: Vec<Function>,
     pub consts: Vec<MemVal>,
+}
+#[derive(Debug, Clone)]
+pub struct Function {
+    pub label: String,
+    pub blocks: Vec<Block>
 }
 impl Program {
     pub fn new() -> Program {
         Program {
-            start: BlockLocation::Named("entry".to_owned()),
-            blocks: vec![],
+            start: "entry".to_owned(),
+            funcs: vec![],
             consts: vec![],
         }
     }
 
+    fn current_fun(&mut self) -> &mut Function {
+        self.funcs.last_mut().expect("empty funcs")
+    }
+
+    fn current_block(&mut self) -> &mut Block {
+        self.current_fun().blocks.last_mut().expect("empty blocks")
+    }
+
     pub fn push_instr(&mut self, instr: Instr<BlockLocation>) {
-        self.blocks.last_mut().unwrap().instrs.push(instr);
+        self.current_block().instrs.push(instr);
     }
 
     pub fn start_block(&mut self) {
-        self.blocks.push(Block::new())
+        self.current_fun().blocks.push(Block::new())
     }
 
-    pub fn start_named_block(&mut self, name: String) {
-        self.blocks.push(Block::named(name))
+    pub fn start_function(&mut self, name: String) {
+        self.funcs.push(Function { label: name, blocks: vec![Block::new()] })
     }
 
     pub fn insert_nop(&mut self) {
-        if self.blocks.last().unwrap().instrs.is_empty() {
+        if self.current_block().instrs.is_empty() {
             self.push_instr(Instr::Nop)
         }
     }
 }
 
-const FLATTEN_DEBUG: bool = false;
+const FLATTEN_DEBUG: bool = true;
 #[derive(Debug, Clone)]
 pub struct FlatProgram {
     pub start: usize,
@@ -54,24 +67,20 @@ impl FlatProgram {
         let mut instruction_count: isize = 0;
         let mut block_offsets: Vec<isize> = vec![];
         let mut block_names: HashMap<String, usize> = HashMap::new();
-        for block in &prog.blocks {
-            if let Some(name) = &block.label {
-                block_names.insert(name.to_owned(), block_offsets.len());
+        for func in &prog.funcs {
+            block_names.insert(func.label.to_owned(), block_offsets.len());
+            for block in &func.blocks {
+                block_offsets.push(instruction_count);
+                instruction_count += block.instrs.len() as isize;
             }
-            block_offsets.push(instruction_count);
-            instruction_count += block.instrs.len() as isize;
         }
         if FLATTEN_DEBUG {
-            println!("{:?}\n{:?}", prog.blocks, block_offsets);
+            println!("{:?}\n{:?}", prog.funcs, block_offsets);
         }
 
-        let start = if let BlockLocation::Named(name) = prog.start {
-            block_offsets[*block_names
-                .get(&name)
-                .expect("start references undeclared block")] as usize
-        } else {
-            panic!("Unexpected BlockLocation type for start")
-        };
+        let start = block_offsets[*block_names
+            .get(&prog.start)
+            .expect("start references undeclared block")] as usize;
 
         let mut flat = FlatProgram {
             start: start,
@@ -79,22 +88,26 @@ impl FlatProgram {
             consts: prog.consts,
         };
         let mut instruction_pointer: usize = 0;
-        for (idx, block) in prog.blocks.into_iter().enumerate() {
-            for instr in block.instrs {
-                flat.instrs.push(instr.map(|block_off| match block_off {
-                    BlockLocation::BlockOffset(off) => {
-                        let dest_idx = idx.checked_add_signed(off).expect("block pointer overflow");
-                        let block_begin = block_offsets[dest_idx];
-                        // -1 because IP is _next_ instruction
-                        let instr_offset = (block_begin as isize) - (instruction_pointer as isize) - 1;
-                        if FLATTEN_DEBUG {
-                            println!("BlockOffset {} from blocks {} to {}, from instr {} to {}, offset = {}", off, idx, dest_idx, instruction_pointer, block_begin, instr_offset);
-                        }
-                        InstrLocation::InstrOffset(instr_offset)
-                    },
-                    BlockLocation::Named(name) => InstrLocation::InstrAbsolute(block_offsets[*block_names.get(&name).expect("undeclared reference to block label")] as usize)
-                }));
-                instruction_pointer += 1;
+        let mut block_pointer: usize = 0;
+        for func in prog.funcs {
+            for block in func.blocks {
+                for instr in block.instrs {
+                    flat.instrs.push(instr.map(|block_off| match block_off {
+                        BlockLocation::BlockOffset(off) => {
+                            let dest_idx = block_pointer.checked_add_signed(off).expect("block pointer overflow");
+                            let block_begin = block_offsets[dest_idx];
+                            // -1 because IP is _next_ instruction
+                            let instr_offset = (block_begin as isize) - (instruction_pointer as isize) - 1;
+                            if FLATTEN_DEBUG {
+                                println!("BlockOffset {} from blocks {} to {}, from instr {} to {}, offset = {}", off, block_pointer, dest_idx, instruction_pointer, block_begin, instr_offset);
+                            }
+                            InstrLocation::InstrOffset(instr_offset)
+                        },
+                        BlockLocation::Named(name) => InstrLocation::InstrAbsolute(block_offsets[*block_names.get(&name).expect("undeclared reference to block label")] as usize)
+                    }));
+                    instruction_pointer += 1;
+                }
+                block_pointer += 1;
             }
         }
 

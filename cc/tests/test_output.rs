@@ -1,7 +1,7 @@
 use cc::compiler;
 
 fn assert_output(program: &str, expected_output: Vec<&str>) {
-    let ir = compiler::produce_stack_ir(program);
+    let ir = compiler::produce_stack_ir(program).unwrap();
     let actual = stack_vm::vm::VM::run_with_mock_io(&ir);
 
     assert_eq!(actual, expected_output, "in example: {}", program,);

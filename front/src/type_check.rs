@@ -320,7 +320,7 @@ impl TypeChecker {
             ast::Statement::Expr(e) => Ok(vec![annotated_ast::Statement::Expr(
                 self.check_expression(e)?,
             )]),
-            ast::Statement::Pass => todo!(),
+            ast::Statement::Pass => Ok(vec![]),
             ast::Statement::Return(e) => {
                 let expected_type = self.current_fun().ok_or(TypeError::ReturnOutsideOfFunction)?.return_type;
 
