@@ -75,4 +75,5 @@ fn test_functions() {
         "def f(x: int) -> int:\n  return x + 1\ndef g(y: int) -> int:\n  return f(y * 2)\nprint(g(1))",
         vec!["3"],
     );
+    assert_output("def p(x: int):\n  print(x)\n  return\np(1)", vec!["1"]);
 }
