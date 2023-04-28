@@ -340,7 +340,7 @@ impl TypeChecker {
                     Ok(vec![annotated_ast::Statement::Return(Some(Box::new(e)))])
                 } else {
                     TypeChecker::match_type(expected_type, ChocoType::None)?;
-                    Ok(vec![annotated_ast::Statement::Return(None)])
+                    Ok(vec![annotated_ast::Statement::Return(Some(Box::new(annotated_ast::Expression::Lit { l: ast::Literal::None })))])
                 }
             }
             ast::Statement::Assign { targets, expr } => {
@@ -572,7 +572,10 @@ impl TypeChecker {
     }
 
     fn finish_fun(&mut self) {
-        let f = self.funs.pop().expect("function stack empty");
+        let mut f = self.funs.pop().expect("function stack empty");
+        if f.return_type == ChocoType::None && f.name != "entry" {
+            f.body.push(annotated_ast::Statement::Return(Some(Box::new(annotated_ast::Expression::Lit { l: ast::Literal::None }))));
+        }
         self.program.funs.push(f);
     }
 

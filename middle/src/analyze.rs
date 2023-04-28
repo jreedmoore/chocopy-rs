@@ -36,7 +36,7 @@ fn check_exhaustive_returns_func(func: &stack::Function) -> Result<(), AnalyzeEr
                 _ => (),
             }
         }
-        if !out_edge && func.label != "entry" {
+        if !out_edge && func.label != "entry" && func.must_return {
             return Err(AnalyzeError::FunctionWithoutReturn(func.label.to_owned()))
         }
     }

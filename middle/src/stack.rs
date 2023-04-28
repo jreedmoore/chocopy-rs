@@ -17,6 +17,7 @@ pub struct Program {
 #[derive(Debug, Clone)]
 pub struct Function {
     pub label: String,
+    pub must_return: bool,
     pub blocks: Vec<Block>
 }
 impl Program {
@@ -44,8 +45,8 @@ impl Program {
         self.current_fun().blocks.push(Block::new())
     }
 
-    pub fn start_function(&mut self, name: String) {
-        self.funcs.push(Function { label: name, blocks: vec![Block::new()] })
+    pub fn start_function(&mut self, name: String, must_return: bool) {
+        self.funcs.push(Function { label: name, must_return, blocks: vec![Block::new()] })
     }
 
     pub fn insert_nop(&mut self) {

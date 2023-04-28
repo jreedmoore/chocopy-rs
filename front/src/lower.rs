@@ -61,7 +61,7 @@ impl Lower {
             for p in &fun.params {
                 self.upsert_local(&p.name);
             }
-            self.lowered.start_function(fun.name.clone());
+            self.lowered.start_function(fun.name.clone(), fun.return_type != ChocoType::None);
             for stmt in &fun.body {
                 self.lower_statement(&stmt);
             }

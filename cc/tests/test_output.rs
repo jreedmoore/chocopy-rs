@@ -76,6 +76,7 @@ fn test_functions() {
         vec!["3"],
     );
     assert_output("def p(x: int):\n  print(x)\n  return\np(1)", vec!["1"]);
+    assert_output("def f():\n  pass\ndef g():\n  print(1)\nf()", vec![]);
 }
 
 fn with_preamble(prog: &str) -> String {
