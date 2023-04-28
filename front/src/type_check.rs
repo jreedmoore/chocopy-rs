@@ -121,13 +121,23 @@ impl TypeChecker {
                     choco_type: ChocoType::Bool,
                 })
             }
-            ast::Expression::BinaryOp(op @ (ast::BinOp::And | ast::BinOp::Or), l, r) => {
+            ast::Expression::BinaryOp(ast::BinOp::And, l, r) => {
                 let al = TypeChecker::match_type(ChocoType::Bool, self.check_expression(l)?)?;
                 let ar = TypeChecker::match_type(ChocoType::Bool, self.check_expression(r)?)?;
-                Ok(annotated_ast::Expression::Binary {
-                    op: *op,
-                    l: Box::new(al),
-                    r: Box::new(ar),
+                Ok(annotated_ast::Expression::Ternary {
+                    cond: Box::new(annotated_ast::Expression::Unary { op: annotated_ast::UnaryOp::LogicalNot, e: Box::new(al), choco_type: ChocoType::Bool }),
+                    then: Box::new(annotated_ast::Expression::Lit { l: ast::Literal::False }),
+                    els: Box::new(ar),
+                    choco_type: ChocoType::Bool,
+                })
+            }
+            ast::Expression::BinaryOp(ast::BinOp::Or, l, r) => {
+                let al = TypeChecker::match_type(ChocoType::Bool, self.check_expression(l)?)?;
+                let ar = TypeChecker::match_type(ChocoType::Bool, self.check_expression(r)?)?;
+                Ok(annotated_ast::Expression::Ternary {
+                    cond: Box::new(al),
+                    then: Box::new(annotated_ast::Expression::Lit { l: ast::Literal::True }),
+                    els: Box::new(ar),
                     choco_type: ChocoType::Bool,
                 })
             }

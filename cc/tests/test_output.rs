@@ -77,3 +77,26 @@ fn test_functions() {
     );
     assert_output("def p(x: int):\n  print(x)\n  return\np(1)", vec!["1"]);
 }
+
+fn with_preamble(prog: &str) -> String {
+    let preamble = r#"
+def t() -> bool:
+    print("t")
+    return True
+
+def f() -> bool:
+    print("f")
+    return False
+
+"#;
+
+    preamble.to_owned() + prog
+}
+
+#[test]
+fn test_short_circuiting() {
+    assert_output(&with_preamble("t() or True"), vec!["t"]);
+    assert_output(&with_preamble("True or t()"), vec![]);
+    assert_output(&with_preamble("f() and False"), vec!["f"]);
+    assert_output(&with_preamble("False and f()"), vec![]);
+}
