@@ -55,7 +55,7 @@ impl Program {
     }
 }
 
-const FLATTEN_DEBUG: bool = true;
+const FLATTEN_DEBUG: bool = false;
 #[derive(Debug, Clone)]
 pub struct FlatProgram {
     pub start: usize,

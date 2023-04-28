@@ -70,9 +70,9 @@ fn test_strings() {
 
 #[test]
 fn test_functions() {
-    assert_output("def f(x: int) -> int:\n  x + 1\nprint(f(1))", vec!["2"]);
+    assert_output("def f(x: int) -> int:\n  return x + 1\nprint(f(1))", vec!["2"]);
     assert_output(
-        "def f(x: int) -> int:\n  x + 1\ndef g(y: int) -> int:\n  return f(y * 2)\nprint(g(1))",
+        "def f(x: int) -> int:\n  return x + 1\ndef g(y: int) -> int:\n  return f(y * 2)\nprint(g(1))",
         vec!["3"],
     );
 }

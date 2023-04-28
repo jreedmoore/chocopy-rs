@@ -65,9 +65,6 @@ impl Lower {
             for stmt in &fun.body {
                 self.lower_statement(&stmt);
             }
-            if fun.name != "entry" {
-                self.push_instr(Instr::Return)
-            }
         }
         self.lowered.insert_nop();
         &self.lowered
