@@ -86,6 +86,19 @@ impl<S> VM<S> {
                     };
                     (self.print)(&mut self.s, s)
                 }
+                stack::Instr::CallNative(n) if n == "len_str" => {
+                    let v = self.pop();
+                    match v {
+                        VMVal::StrRef(idx) => {
+                            if let MemVal::Str(s) = &self.heap[idx] {
+                                self.push(VMVal::Number(s.len() as i32))
+                            } else {
+                                panic!("expected string at heap location {:?}", idx);
+                            }
+                        }
+                        _ => panic!("unexpected type on stack")
+                    }
+                }
                 stack::Instr::Call { loc, arity } => {
                     self.call_stack.push(CallFrame {
                         return_ip: self.instruction_pointer,
@@ -280,6 +293,7 @@ pub enum VMVal {
     Bool(bool),
     None,
     StrRef(usize),
+    ListRef(usize),
 }
 impl VMVal {
     fn is_ref(&self) -> bool {

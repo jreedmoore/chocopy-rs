@@ -66,6 +66,7 @@ fn test_strings() {
     assert_output("x: str = \"abc\"\nprint(x[1])", vec!["b"]);
     assert_output("print(\"abc\" == \"abc\")", vec!["True"]);
     assert_output("print(\"abc\" is \"abc\")", vec!["False"]);
+    assert_output("print(len(\"abc\"))", vec!["3"]);
 }
 
 #[test]

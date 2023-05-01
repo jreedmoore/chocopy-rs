@@ -28,3 +28,9 @@ fn test_return_analysis() {
     assert_compiles("def f():\n  if True:\n    return\n  else:\n    pass");
     assert_compiles("def f() -> int:\n  if True:\n    return 1\n  else:\n    return 2");
 }
+
+#[test]
+fn test_function_call() {
+    assert_fails_static_checks("NotBound", "f()");
+    assert_fails_static_checks("TypeMismatch", "len(1)");
+}

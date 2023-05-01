@@ -40,6 +40,7 @@ pub enum TypeError {
     CannotTreatFunsAsLocals,
     NotBoundAsVar,
     ReturnOutsideOfFunction,
+    WrongNumberOfArugments,
 }
 impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -244,10 +245,25 @@ impl TypeChecker {
             // hack in support for print
             ast::Expression::Call(id, es) if id.name == "print" => {
                 let es = self.check_exprs(es)?;
-                let e = es[0].clone();
+                let e = TypeChecker::exactly_one_param(es)?;
                 Ok(annotated_ast::Expression::Call {
                     f: annotated_ast::FunId {
-                        name: "host_print".to_string(),
+                        name: "host_print".to_owned(),
+                    },
+                    params: vec![e],
+                    native: true,
+                    choco_type: ChocoType::None,
+                })
+            }
+            ast::Expression::Call(id, es) if id.name == "len" => {
+                let es = self.check_exprs(es)?;
+                let e = TypeChecker::exactly_one_param(es)?;
+                Ok(annotated_ast::Expression::Call {
+                    f: annotated_ast::FunId {
+                        name: match e.choco_type() {
+                            ChocoType::Str => "len_str".to_owned(),
+                            t => return Err(TypeError::TypeMismatch { expected: ChocoType::Str, actual: t })
+                        }
                     },
                     params: vec![e],
                     native: true,
@@ -596,6 +612,14 @@ impl TypeChecker {
             .map(|f| Ok(f))
             .unwrap_or(Err(TypeError::NotBound(name.to_owned())))
     }
+
+    fn exactly_one_param(es: Vec<annotated_ast::Expression>) -> Result<annotated_ast::Expression, TypeError> {
+        if es.len() == 1 {
+            Ok(es[0].clone())
+        } else {
+            Err(TypeError::WrongNumberOfArugments)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -711,5 +735,12 @@ mod tests {
         );
         assert_fails_type_check("return");
         assert_fails_type_check("def f() -> int\n  return False");
+    }
+
+    #[test]
+    fn test_assignment_with_none() {
+        assert_fails_type_check("x: str = None");
+        assert_fails_type_check("x: int = None");
+        assert_fails_type_check("x: bool = None");
     }
 }
