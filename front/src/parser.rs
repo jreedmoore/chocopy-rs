@@ -501,6 +501,21 @@ impl<'a> Parser<'a> {
             Token::Integer(i) => Some(ast::Literal::Integer(i)),
             Token::String(s) => Some(ast::Literal::Str(s.clone())),
             Token::IdString(s) => Some(ast::Literal::IdStr(ast::Identifier { name: s.clone() })),
+            Token::OpenBracket => {
+                let mut lits = vec![];
+                loop {
+                    lits.push(self.expression()?);
+                    if self.peek()? == &Token::CloseBracket {
+                        break;
+                    }
+                    if self.peek()? == &Token::Comma {
+                        self.advance("literal list comma");
+                        continue;
+                    }
+                }
+                self.consume(Token::CloseBracket, "literal list case");
+                Some(ast::Literal::List(lits))
+            }
             _ => None,
         }
     }
@@ -887,8 +902,9 @@ mod tests {
 
     #[test]
     fn test_one() {
+        assert_parses("l: [int] = [1,2,3]");
         //assert_parses("1")
-        assert_parses("def f(x: int):\n  pass");
+        //assert_parses("def f(x: int):\n  pass");
         //assert_parses("a < len(b)");
         //assert_parses("1 + 2 * 3 + 4");
     }
@@ -925,5 +941,6 @@ mod tests {
         assert_parses("return f(y)\n");
         assert_parses("def f(x: int):\n  pass");
         assert_parses("def f(x: int):\n  y: int = 0");
+        assert_parses("l: [int] = [1,2,3]");
     }
 }

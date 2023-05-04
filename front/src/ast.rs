@@ -90,9 +90,10 @@ pub enum Literal {
     Integer(i32),
     Str(String),
     IdStr(Identifier),
+    List(Vec<Expression>)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expression {
     Not(Box<Expression>),
     Ternary {
@@ -114,12 +115,12 @@ pub enum Expression {
     UnaryMinus(Box<Expression>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemberExpression {
     pub expr: Box<Expression>,
     pub id: Identifier,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IndexExpression {
     pub expr: Box<Expression>,
     pub index: Box<Expression>,

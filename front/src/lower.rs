@@ -129,28 +129,38 @@ impl Lower {
     fn lower_expr(&mut self, e: &Expression) {
         match e {
             Expression::Lit {
-                l: ast::Literal::True,
+                l: Literal::True,
+                ..
             } => self.push_instr(Instr::BoolConst(true)),
             Expression::Lit {
-                l: ast::Literal::False,
+                l: Literal::False,
+                ..
             } => self.push_instr(Instr::BoolConst(false)),
             Expression::Lit {
-                l: ast::Literal::Integer(i),
+                l: Literal::Integer(i),
+                ..
             } => self.push_instr(Instr::NumConst(*i)),
             Expression::Lit {
-                l: ast::Literal::None,
+                l: Literal::None,
+                ..
             } => self.push_instr(Instr::NoneConst),
             Expression::Lit {
-                l: ast::Literal::Str(s),
+                l: Literal::Str(s),
+                ..
             } => {
                 let idx = self.push_constant(s);
                 self.push_instr(Instr::LoadConstant(idx));
             }
             Expression::Lit {
-                l: ast::Literal::IdStr(i),
+                l: Literal::List(exprs),
+                ..
             } => {
-                let idx = self.push_constant(&i.name);
-                self.push_instr(Instr::LoadConstant(idx));
+                self.push_instr(Instr::ListAlloc);
+                for expr in exprs {
+                    self.push_instr(Instr::Duplicate);
+                    self.lower_expr(expr);
+                    self.push_instr(Instr::ListAppend);
+                }
             }
             Expression::Unary {
                 op: annotated_ast::UnaryOp::LogicalNot,
@@ -195,6 +205,22 @@ impl Lower {
                 op,
                 l,
                 r,
+                choco_type: ChocoType::List(_),
+            } => {
+                self.lower_expr(l);
+                self.lower_expr(r);
+                self.push_instr(match op {
+                    ast::BinOp::Plus => Instr::ListConcat,
+                    ast::BinOp::Equals => Instr::Eq,
+                    ast::BinOp::NotEquals => Instr::Ne,
+                    ast::BinOp::Is => Instr::Is,
+                    _ => panic!("Unsupported op for strings"),
+                })
+            }
+            Expression::Binary {
+                op,
+                l,
+                r,
                 choco_type: ChocoType::Int | ChocoType::Bool,
             } => {
                 self.lower_expr(l);
@@ -219,6 +245,7 @@ impl Lower {
                     crate::ast::BinOp::Is => Instr::Is,
                 });
             }
+            Expression::Binary { .. } => panic!("Unsupported binary ops"),
             Expression::Call {
                 f, params, native, ..
             } => {
@@ -253,6 +280,11 @@ impl Lower {
                     self.lower_expr(index);
                     self.push_instr(Instr::StrIndex);
                 }
+                ChocoType::List(_) => {
+                    self.lower_expr(expr);
+                    self.lower_expr(index);
+                    self.push_instr(Instr::ListIndex);
+                }
                 t => panic!("Unsupported type for index {:?}", t),
             },
         }
@@ -284,7 +316,7 @@ impl Lower {
 
     fn push_constant(&mut self, s: &str) -> usize {
         let idx = self.lowered.consts.len();
-        self.lowered.consts.push(stack::MemVal::Str(s.to_owned()));
+        self.lowered.consts.push(stack::ConstVal::Str(s.to_owned()));
         idx
     }
 }

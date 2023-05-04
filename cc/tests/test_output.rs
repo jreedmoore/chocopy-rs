@@ -70,6 +70,14 @@ fn test_strings() {
 }
 
 #[test]
+fn test_lists() {
+    assert_output("l: [int] = [1,2,3]\nprint(l[2])", vec!["3"]);
+    assert_output("l: [int] = [1,2,3]\nprint(len(l))", vec!["3"]);
+    assert_output("a: [int] = [1,2]\nb: [int] = [3]\na = a + b\nprint(a[2])", vec!["3"]);
+    // need assignability analysis for a test like `c: [int] = []\nc = a + b`
+}
+
+#[test]
 fn test_functions() {
     assert_output("def f(x: int) -> int:\n  return x + 1\nprint(f(1))", vec!["2"]);
     assert_output(

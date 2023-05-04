@@ -1,4 +1,4 @@
-use middle::stack::{self, MemVal};
+use middle::stack::{self, ConstVal};
 
 const VM_DEBUG: bool = false;
 
@@ -14,7 +14,7 @@ pub struct VM<S> {
     stack: Vec<VMVal>,
     stack_base: usize,
     call_stack: Vec<CallFrame>,
-    consts: Vec<MemVal>,
+    consts: Vec<ConstVal>,
     globals: Vec<MemVal>,
     heap: Vec<MemVal>,
     pub s: S,
@@ -83,21 +83,19 @@ impl<S> VM<S> {
                                 panic!("expected string at heap location {:?}", idx);
                             }
                         }
+                        VMVal::ListRef(idx) => todo!("list print support")
                     };
                     (self.print)(&mut self.s, s)
                 }
                 stack::Instr::CallNative(n) if n == "len_str" => {
-                    let v = self.pop();
-                    match v {
-                        VMVal::StrRef(idx) => {
-                            if let MemVal::Str(s) = &self.heap[idx] {
-                                self.push(VMVal::Number(s.len() as i32))
-                            } else {
-                                panic!("expected string at heap location {:?}", idx);
-                            }
-                        }
-                        _ => panic!("unexpected type on stack")
-                    }
+                    let s_ref = self.pop_str();
+                    let l = self.heap_as_str(s_ref).len();
+                    self.push(VMVal::Number(l as i32));
+                }
+                stack::Instr::CallNative(n) if n == "len_list" => {
+                    let s_ref = self.pop_list();
+                    let l = self.heap_as_list(s_ref).len();
+                    self.push(VMVal::Number(l as i32));
                 }
                 stack::Instr::Call { loc, arity } => {
                     self.call_stack.push(CallFrame {
@@ -137,10 +135,9 @@ impl<S> VM<S> {
                 }
                 stack::Instr::Nop => (),
                 stack::Instr::LoadConstant(i) => {
-                    let idx = self.alloc(p.consts[*i].clone());
+                    let idx = self.alloc(MemVal::from_const(&p.consts[*i]));
                     let stack_ref = match &p.consts[*i] {
-                        MemVal::Str(_) => VMVal::StrRef(idx),
-                        MemVal::Unused => panic!("Loading uninitialized constant"),
+                        ConstVal::Str(_) => VMVal::StrRef(idx),
                     };
                     self.push(stack_ref);
                 }
@@ -171,6 +168,36 @@ impl<S> VM<S> {
                     self.push(VMVal::Bool(l == r && l.is_ref() && r.is_ref()));
                 }
                 stack::Instr::CallNative(n) => todo!("Unsupported native call: {}", n),
+                stack::Instr::ListAlloc => { 
+                    let idx = self.alloc(MemVal::List(vec![]));
+                    self.push(VMVal::ListRef(idx));
+                }
+                stack::Instr::ListAppend => {
+                    let val = self.pop();
+                    let l_ref = self.pop_list();
+                    self.heap_as_list_mut(l_ref).push(val);
+                }
+                stack::Instr::ListIndex => {
+                    let idx = self.pop_num();
+                    let l_ref = self.pop_list();
+                    let v = self.heap_as_list(l_ref)[idx as usize];
+                    self.push(v.clone());
+                }
+                stack::Instr::ListConcat => {
+                    let b_ref = self.pop_list();
+                    let a_ref = self.pop_list();
+                    let a = self.heap_as_list(a_ref);
+                    let b = self.heap_as_list(b_ref);
+                    let mut c = a.clone();
+                    c.append(&mut b.clone());
+                    let idx = self.alloc(MemVal::List(c));
+                    self.push(VMVal::ListRef(idx));
+                }
+                stack::Instr::Duplicate => {
+                    let v = self.pop();
+                    self.push(v.clone());
+                    self.push(v);
+                }
             }
         }
     }
@@ -238,6 +265,14 @@ impl<S> VM<S> {
         }
     }
 
+    fn pop_list(&mut self) -> usize {
+        if let VMVal::ListRef(idx) = self.pop() {
+            idx
+        } else {
+            panic!("expected list ref on stack")
+        }
+    }
+
     fn push(&mut self, v: VMVal) {
         self.stack.push(v)
     }
@@ -245,7 +280,21 @@ impl<S> VM<S> {
     fn heap_as_str(&self, idx: usize) -> &str {
         match &self.heap[idx] {
             MemVal::Str(s) => s.as_str(),
-            MemVal::Unused => panic!("expected Str on heap, got Unused"),
+            _ => panic!("expected Str on heap, got Unused"),
+        }
+    }
+
+    fn heap_as_list(&self, idx: usize) -> &Vec<VMVal> {
+        match &self.heap[idx] {
+            MemVal::List(v) => &v,
+            _ => panic!("expected Str on heap, got Unused"),
+        }
+    }
+
+    fn heap_as_list_mut(&mut self, idx: usize) -> &mut Vec<VMVal> {
+        match self.heap[idx] {
+            MemVal::List(ref mut v) => v,
+            _ => panic!("expected Str on heap, got Unused"),
         }
     }
 
@@ -301,6 +350,20 @@ impl VMVal {
             VMVal::None => true,
             VMVal::StrRef(_) => true,
             _ => false,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum MemVal {
+    Str(String),
+    List(Vec<VMVal>),
+    Unused
+}
+impl MemVal {
+    pub fn from_const(c: &ConstVal) -> MemVal {
+        match c {
+            ConstVal::Str(s) => MemVal::Str(s.clone())
         }
     }
 }

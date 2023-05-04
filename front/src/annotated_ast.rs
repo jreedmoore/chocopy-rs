@@ -1,5 +1,5 @@
 use crate::{
-    ast::{self, TypedVar},
+    ast,
     type_check::ChocoType,
 };
 
@@ -44,7 +44,8 @@ pub enum Expression {
         choco_type: ChocoType,
     },
     Lit {
-        l: ast::Literal,
+        l: Literal,
+        choco_type: ChocoType,
     },
     Unary {
         op: UnaryOp,
@@ -68,25 +69,24 @@ pub enum Expression {
 impl ChocoTyped for Expression {
     fn choco_type(&self) -> ChocoType {
         match self {
-            Expression::Binary { choco_type, .. } => *choco_type,
-            Expression::Call { choco_type, .. } => *choco_type,
-            Expression::Lit { l } => l.choco_type(),
-            Expression::Unary { choco_type, .. } => *choco_type,
-            Expression::Ternary { choco_type, .. } => *choco_type,
+            Expression::Binary { choco_type, .. } => choco_type.clone(),
+            Expression::Call { choco_type, .. } => choco_type.clone(),
+            Expression::Lit { choco_type, .. } => choco_type.clone(),
+            Expression::Unary { choco_type, .. } => choco_type.clone(),
+            Expression::Ternary { choco_type, .. } => choco_type.clone(),
             Expression::Load { v } => v.choco_type(),
             Expression::Index { expr, .. } => expr.choco_type(),
         }
     }
 }
-impl ChocoTyped for ast::Literal {
-    fn choco_type(&self) -> ChocoType {
-        match self {
-            ast::Literal::True | ast::Literal::False => ChocoType::Bool,
-            ast::Literal::Integer(_) => ChocoType::Int,
-            ast::Literal::None => ChocoType::None,
-            ast::Literal::Str(_) | ast::Literal::IdStr(_) => ChocoType::Str,
-        }
-    }
+#[derive(Debug, Clone)]
+pub enum Literal {
+    None,
+    True,
+    False,
+    Integer(i32),
+    Str(String),
+    List(Vec<Expression>)
 }
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -128,7 +128,7 @@ pub enum Var {
 impl ChocoTyped for Var {
     fn choco_type(&self) -> ChocoType {
         match self {
-            Var::Local { choco_type, .. } => *choco_type,
+            Var::Local { choco_type, .. } => choco_type.clone(),
         }
     }
 }

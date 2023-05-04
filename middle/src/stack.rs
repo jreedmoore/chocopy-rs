@@ -12,7 +12,7 @@ use std::collections::HashMap;
 pub struct Program {
     pub start: String,
     pub funcs: Vec<Function>,
-    pub consts: Vec<MemVal>,
+    pub consts: Vec<ConstVal>,
 }
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -60,7 +60,7 @@ const FLATTEN_DEBUG: bool = false;
 #[derive(Debug, Clone)]
 pub struct FlatProgram {
     pub start: usize,
-    pub consts: Vec<MemVal>,
+    pub consts: Vec<ConstVal>,
     pub instrs: Vec<Instr<InstrLocation>>,
 }
 impl FlatProgram {
@@ -169,6 +169,7 @@ pub enum Instr<Loc> {
     Call { loc: Loc, arity: usize },
 
     Drop,
+    Duplicate,
 
     Jump(Loc),
     IfJump(Loc),
@@ -184,6 +185,10 @@ pub enum Instr<Loc> {
     StrIndex,
     Is,
     Return,
+    ListAlloc,
+    ListAppend,
+    ListConcat,
+    ListIndex,
 }
 impl<A> Instr<A> {
     fn map<B, F>(self, f: F) -> Instr<B>
@@ -214,6 +219,7 @@ impl<A> Instr<A> {
             Call { loc, arity } => Call { loc: f(loc), arity },
             Return => Return,
             Drop => Drop,
+            Duplicate => Duplicate,
             Jump(a) => Jump(f(a)),
             IfJump(a) => IfJump(f(a)),
             Nop => Nop,
@@ -222,6 +228,11 @@ impl<A> Instr<A> {
             LoadConstant(i) => LoadConstant(i),
             StrConcat => StrConcat,
             StrIndex => StrIndex,
+
+            ListAlloc => ListAlloc,
+            ListAppend => ListAppend,
+            ListIndex => ListIndex,
+            ListConcat => ListConcat,
         }
     }
 }
@@ -251,7 +262,6 @@ impl InstrLocation {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum MemVal {
+pub enum ConstVal {
     Str(String),
-    Unused,
 }

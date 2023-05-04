@@ -7,10 +7,14 @@ More or less a listing of functionality described in the Language Reference, wit
 - [x] String `len`
     - Should add a representation of native functions to use in `print` and `len-list`
 - Lists
-    - Representation in Stack IR
-    - Implement operators, literal
+    - [x] Representation in Stack IR
+    - [x] Implement operators, literal
+        - Language does not allow for appending to a list, but we'll use it for literal construction
+        - Concat will look exactly like str concat
+        - Indexing is straightforward
+    - [x] `len`
     - Iteration `for x in L:`
-    - `len`
+        - Desugaring into while loop with indexing; this should be implemented in a pre-typechecker phase
 - Classes
     - Layout in memory
     - Inheritance
