@@ -30,6 +30,13 @@ impl ChocoType {
             _ => false
         }
     }
+
+    fn list_inner_type(&self) -> Result<ChocoType, TypeError> {
+        match self {
+            ChocoType::List(t) => Ok(*t.clone()),
+            _ => Err(TypeError::NotAList)
+        }
+    }
 }
 impl ChocoTyped for ChocoType {
     fn choco_type(&self) -> ChocoType {
@@ -53,6 +60,8 @@ pub enum TypeError {
     ReturnOutsideOfFunction,
     WrongNumberOfArugments,
     CannotIndexIntoNonList,
+    CannotIterateOverNonList,
+    NotAList,
 }
 impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -369,21 +378,15 @@ impl TypeChecker {
             ast::Target::Member(_) => Err(TypeError::Todo),
             ast::Target::Index(access) => {
                 let list = self.check_expression(&access.expr)?;
-                if !list.choco_type().is_list() {
-                    return Err(TypeError::CannotIndexIntoNonList)
-                }
+                let inner_type = list.choco_type().list_inner_type()?;
                 let index = TypeChecker::match_type(ChocoType::Int, self.check_expression(&access.index)?)?;
-                let inner_type = match list.choco_type() {
-                    ChocoType::List(t) => t,
-                    _ => unreachable!()
-                };
-                Ok(annotated_ast::Lhs::Index{ list: Box::new(list), index: Box::new(index), choco_type: *inner_type.clone() })
+                Ok(annotated_ast::Lhs::Index{ list: Box::new(list), index: Box::new(index), choco_type: inner_type })
             }
         }
     }
 
     pub fn check_stmt(
-        &self,
+        &mut self,
         p: &ast::Statement,
     ) -> Result<Vec<annotated_ast::Statement>, TypeError> {
         match p {
@@ -460,12 +463,76 @@ impl TypeChecker {
                 let stmts = self.check_stmts(&cond_block.then)?;
                 Ok(vec![annotated_ast::Statement::While { cond, stmts }])
             }
-            ast::Statement::For { .. } => todo!(),
+            ast::Statement::For { id, in_expr, block } => {
+                let list = self.check_expression(in_expr)?;
+                let inner_type = list.choco_type().list_inner_type()?;
+
+                let idx = "$idx_".to_owned() + id.name.as_str();
+                let idx_local = self.add_local(idx, ChocoType::Int)?.clone();
+
+                let in_name = "$in_".to_owned() + id.name.as_str();
+                let in_local = self.add_local(in_name, list.choco_type())?.clone();
+
+                let len = "$len_".to_owned() + id.name.as_str();
+                let len_local = self.add_local(len, ChocoType::Int)?.clone();
+
+                let val_local = self.add_local(id.name.clone(), inner_type)?.clone();
+
+                let mut desugar_stmts = vec![
+                    annotated_ast::Statement::Assign(
+                        vec![annotated_ast::Lhs::Var(val_local.clone())],
+                        annotated_ast::Expression::Index {
+                            expr: Box::new(annotated_ast::Expression::Load { v: in_local.clone() }),
+                            index: Box::new(annotated_ast::Expression::Load { v: idx_local.clone() })
+                        }
+                    )
+                ];
+                for stmt in block {
+                    let mut stmt = self.check_stmt(stmt)?;
+                    desugar_stmts.append(&mut stmt);
+                }
+                desugar_stmts.push(annotated_ast::Statement::Assign(
+                    vec![annotated_ast::Lhs::Var(idx_local.clone())],
+                    annotated_ast::Expression::Binary {
+                        op: ast::BinOp::Plus,
+                        l: Box::new(annotated_ast::Expression::Load { v: idx_local.clone() }),
+                        r: Box::new(annotated_ast::Expression::Lit { l: annotated_ast::Literal::Integer(1), choco_type: ChocoType::Int}),
+                        choco_type: ChocoType::Int
+                    }
+                ));
+                Ok(vec![
+                    annotated_ast::Statement::Declare(
+                        idx_local.clone(),
+                        annotated_ast::Expression::Lit { l: annotated_ast::Literal::Integer(0), choco_type: ChocoType::Int },
+                    ),
+                    annotated_ast::Statement::Declare(
+                        in_local.clone(),
+                        list
+                    ),
+                    annotated_ast::Statement::Declare(
+                        len_local.clone(),
+                        annotated_ast::Expression::Call { f: FunId { name: "len_list".to_owned() }, params: vec![annotated_ast::Expression::Load { v: in_local }], choco_type: ChocoType::Int, native: true }
+                    ),
+                    annotated_ast::Statement::Declare(
+                        val_local.clone(),
+                        annotated_ast::Expression::Lit { l: annotated_ast::Literal::None, choco_type: ChocoType::None }
+                    ),
+                    annotated_ast::Statement::While {
+                        cond: annotated_ast::Expression::Binary { 
+                            op: ast::BinOp::LessThan, 
+                            l: Box::new(annotated_ast::Expression::Load { v: idx_local }),
+                            r: Box::new(annotated_ast::Expression::Load { v: len_local }),
+                            choco_type: ChocoType::Bool,
+                        },
+                        stmts: desugar_stmts
+                    }
+                ])
+            }
         }
     }
 
     pub fn check_stmts(
-        &self,
+        &mut self,
         s: &[ast::Statement],
     ) -> Result<Vec<annotated_ast::Statement>, TypeError> {
         let mut stmts = vec![];

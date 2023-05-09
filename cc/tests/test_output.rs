@@ -75,6 +75,7 @@ fn test_lists() {
     assert_output("l: [int] = [1,2,3]\nprint(len(l))", vec!["3"]);
     assert_output("a: [int] = [1,2]\nb: [int] = [3]\na = a + b\nprint(a[2])", vec!["3"]);
     assert_output("l: [int] = [1,2,3]\nl[2] = 4\nprint(l[2])", vec!["4"]);
+    assert_output("l: [int] = [1,2,3]\nfor i in l:\n  print(i)", vec!["1", "2", "3"]);
     // need assignability analysis for a test like `c: [int] = []\nc = a + b`
 }
 
