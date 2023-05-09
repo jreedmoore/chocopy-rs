@@ -168,14 +168,9 @@ impl<S> VM<S> {
                     self.push(VMVal::Bool(l == r && l.is_ref() && r.is_ref()));
                 }
                 stack::Instr::CallNative(n) => todo!("Unsupported native call: {}", n),
-                stack::Instr::ListAlloc => { 
-                    let idx = self.alloc(MemVal::List(vec![]));
+                stack::Instr::ListAlloc(size) => { 
+                    let idx = self.alloc(MemVal::List(vec![VMVal::None; *size]));
                     self.push(VMVal::ListRef(idx));
-                }
-                stack::Instr::ListAppend => {
-                    let val = self.pop();
-                    let l_ref = self.pop_list();
-                    self.heap_as_list_mut(l_ref).push(val);
                 }
                 stack::Instr::ListIndex => {
                     let idx = self.pop_num();
@@ -193,10 +188,9 @@ impl<S> VM<S> {
                     let idx = self.alloc(MemVal::List(c));
                     self.push(VMVal::ListRef(idx));
                 }
-                stack::Instr::Duplicate => {
-                    let v = self.pop();
+                stack::Instr::Duplicate(offset) => {
+                    let v = self.stack[(self.stack.len()-1).checked_sub(*offset).expect("dup offset oob")];
                     self.push(v.clone());
-                    self.push(v);
                 }
                 stack::Instr::ListAssign => {
                     let l_ref = self.pop_list();

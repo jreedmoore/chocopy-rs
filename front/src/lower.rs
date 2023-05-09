@@ -78,7 +78,7 @@ impl Lower {
             Statement::Assign(lhs, e) => {
                 self.lower_expr(e);
                 for lhs in lhs {
-                    self.push_instr(Instr::Duplicate);
+                    self.push_instr(Instr::Duplicate(0));
                     match lhs {
                         Lhs::Var(Var::Local { name, .. }) => {
                             let index = self.upsert_local(name);
@@ -165,11 +165,12 @@ impl Lower {
                 l: Literal::List(exprs),
                 ..
             } => {
-                self.push_instr(Instr::ListAlloc);
-                for expr in exprs {
-                    self.push_instr(Instr::Duplicate);
+                self.push_instr(Instr::ListAlloc(exprs.len()));
+                for (idx, expr) in exprs.into_iter().enumerate() {
                     self.lower_expr(expr);
-                    self.push_instr(Instr::ListAppend);
+                    self.push_instr(Instr::NumConst(idx as i32));
+                    self.push_instr(Instr::Duplicate(2));
+                    self.push_instr(Instr::ListAssign);
                 }
             }
             Expression::Unary {

@@ -169,7 +169,7 @@ pub enum Instr<Loc> {
     Call { loc: Loc, arity: usize },
 
     Drop,
-    Duplicate,
+    Duplicate(usize),
 
     Jump(Loc),
     IfJump(Loc),
@@ -185,8 +185,7 @@ pub enum Instr<Loc> {
     StrIndex,
     Is,
     Return,
-    ListAlloc,
-    ListAppend,
+    ListAlloc(usize),
     ListConcat,
     ListIndex,
     // expects [VMVal ListRef Int] on stack
@@ -221,7 +220,7 @@ impl<A> Instr<A> {
             Call { loc, arity } => Call { loc: f(loc), arity },
             Return => Return,
             Drop => Drop,
-            Duplicate => Duplicate,
+            Duplicate(offset) => Duplicate(offset),
             Jump(a) => Jump(f(a)),
             IfJump(a) => IfJump(f(a)),
             Nop => Nop,
@@ -231,8 +230,7 @@ impl<A> Instr<A> {
             StrConcat => StrConcat,
             StrIndex => StrIndex,
 
-            ListAlloc => ListAlloc,
-            ListAppend => ListAppend,
+            ListAlloc(size) => ListAlloc(size),
             ListAssign => ListAssign,
             ListIndex => ListIndex,
             ListConcat => ListConcat,
