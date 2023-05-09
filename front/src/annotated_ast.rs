@@ -15,7 +15,7 @@ impl Program {
 #[derive(Debug, Clone)]
 pub enum Statement {
     Expr(Expression),
-    Assign(Var, Expression),
+    Assign(Vec<Lhs>, Expression),
     Declare(Var, Expression),
     If {
         cond: Expression,
@@ -128,10 +128,26 @@ pub enum Var {
 impl ChocoTyped for Var {
     fn choco_type(&self) -> ChocoType {
         match self {
-            Var::Local { choco_type, .. } => choco_type.clone(),
+            Var::Local { choco_type, .. } => choco_type.clone()
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub enum Lhs {
+    Var(Var),
+    Index { list: Box<Expression>, index: Box<Expression>, choco_type: ChocoType },
+}
+impl ChocoTyped for Lhs {
+    fn choco_type(&self) -> ChocoType {
+        match self {
+            Lhs::Var(v) => v.choco_type(),
+            Lhs::Index { choco_type, .. } => choco_type.clone(),
+        }
+    }
+}
+
+
 
 pub(crate) trait ChocoTyped {
     fn choco_type(&self) -> ChocoType;

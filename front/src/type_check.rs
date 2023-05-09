@@ -19,7 +19,15 @@ impl ChocoType {
         match self {
             ChocoType::Str => true,
             ChocoType::None => true,
+            ChocoType::List(_) => true,
             _ => false,
+        }
+    }
+
+    fn is_list(&self) -> bool {
+        match self {
+            ChocoType::List(_) => true,
+            _ => false
         }
     }
 }
@@ -44,6 +52,7 @@ pub enum TypeError {
     NotBoundAsVar,
     ReturnOutsideOfFunction,
     WrongNumberOfArugments,
+    CannotIndexIntoNonList,
 }
 impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -354,11 +363,22 @@ impl TypeChecker {
         Ok(ann_es)
     }
 
-    pub fn resolve_target(&self, t: &ast::Target) -> Result<&annotated_ast::Var, TypeError> {
+    pub fn resolve_target(&self, t: &ast::Target) -> Result<annotated_ast::Lhs, TypeError> {
         match t {
-            ast::Target::Id(name) => self.get_local(&name.name),
+            ast::Target::Id(name) => Ok(annotated_ast::Lhs::Var(self.get_local(&name.name)?.clone())),
             ast::Target::Member(_) => Err(TypeError::Todo),
-            ast::Target::Index(_) => Err(TypeError::Todo),
+            ast::Target::Index(access) => {
+                let list = self.check_expression(&access.expr)?;
+                if !list.choco_type().is_list() {
+                    return Err(TypeError::CannotIndexIntoNonList)
+                }
+                let index = TypeChecker::match_type(ChocoType::Int, self.check_expression(&access.index)?)?;
+                let inner_type = match list.choco_type() {
+                    ChocoType::List(t) => t,
+                    _ => unreachable!()
+                };
+                Ok(annotated_ast::Lhs::Index{ list: Box::new(list), index: Box::new(index), choco_type: *inner_type.clone() })
+            }
         }
     }
 
@@ -385,21 +405,16 @@ impl TypeChecker {
             }
             ast::Statement::Assign { targets, expr } => {
                 let e = self.check_expression(expr)?;
-                let mut stmts = vec![];
-                if let Some(fst) = targets.first() {
-                    let var = self.resolve_target(fst)?;
-                    stmts.push(annotated_ast::Statement::Assign(var.clone(), e));
-                    for target in targets.iter().skip(1) {
-                        let next_var = self.resolve_target(target)?;
-                        stmts.push(annotated_ast::Statement::Assign(
-                            next_var.clone(),
-                            annotated_ast::Expression::Load { v: var.clone() },
-                        ))
-                    }
-                    Ok(stmts)
-                } else {
-                    Err(TypeError::EmptyTargets)
+                let mut lhs = vec![];
+                if targets.is_empty() {
+                    return Err(TypeError::EmptyTargets)
                 }
+                for target in targets {
+                    let tlhs = self.resolve_target(target)?.clone();
+                    self.is_assignable(tlhs.choco_type(), e.choco_type())?;
+                    lhs.push(tlhs);
+                }
+                Ok(vec![annotated_ast::Statement::Assign(lhs, e)])
             }
             ast::Statement::If {
                 main,
@@ -643,6 +658,15 @@ impl TypeChecker {
             Err(TypeError::WrongNumberOfArugments)
         }
     }
+
+    fn is_assignable(&self, to: ChocoType, from: ChocoType) -> Result<(), TypeError> {
+        if to != from {
+            Err(TypeError::TypeMismatch { expected: to, actual: from })
+        } else {
+            Ok(())
+        }
+    }
+        
 }
 
 #[cfg(test)]
@@ -765,6 +789,11 @@ mod tests {
         assert_fails_type_check("x: str = None");
         assert_fails_type_check("x: int = None");
         assert_fails_type_check("x: bool = None");
+    }
+
+    #[test]
+    fn test_list_assignment() {
+        parse_and_type_check("l: [int] = [1,2,3]\nl[0] = 0").unwrap();
     }
 
     #[test]

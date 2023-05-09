@@ -189,6 +189,8 @@ pub enum Instr<Loc> {
     ListAppend,
     ListConcat,
     ListIndex,
+    // expects [VMVal ListRef Int] on stack
+    ListAssign,
 }
 impl<A> Instr<A> {
     fn map<B, F>(self, f: F) -> Instr<B>
@@ -231,6 +233,7 @@ impl<A> Instr<A> {
 
             ListAlloc => ListAlloc,
             ListAppend => ListAppend,
+            ListAssign => ListAssign,
             ListIndex => ListIndex,
             ListConcat => ListConcat,
         }

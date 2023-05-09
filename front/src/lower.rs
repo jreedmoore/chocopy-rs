@@ -75,13 +75,23 @@ impl Lower {
             annotated_ast::Statement::Expr(e) => {
                 self.lower_expr(e);
             }
-            Statement::Assign(Var::Local { name, .. }, e) => {
-                let index = self.upsert_local(name);
+            Statement::Assign(lhs, e) => {
                 self.lower_expr(e);
-                if e.choco_type() == ChocoType::None {
-                    self.push_instr(Instr::NoneConst)
+                for lhs in lhs {
+                    self.push_instr(Instr::Duplicate);
+                    match lhs {
+                        Lhs::Var(Var::Local { name, .. }) => {
+                            let index = self.upsert_local(name);
+                            self.push_instr(Instr::StoreLocal(index))
+                        }
+                        Lhs::Index { list, index, .. } => {
+                            self.lower_expr(index);
+                            self.lower_expr(list);
+                            self.push_instr(Instr::ListAssign)
+                        }
+                    }
                 }
-                self.push_instr(Instr::StoreLocal(index))
+                self.push_instr(Instr::Drop);
             }
             Statement::Declare(Var::Local { name, .. }, e) => {
                 self.upsert_local(name);

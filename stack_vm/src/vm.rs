@@ -198,6 +198,13 @@ impl<S> VM<S> {
                     self.push(v.clone());
                     self.push(v);
                 }
+                stack::Instr::ListAssign => {
+                    let l_ref = self.pop_list();
+                    let index = self.pop_num();
+                    let val = self.pop();
+                    let l = self.heap_as_list_mut(l_ref);
+                    l[index as usize] = val;
+                }
             }
         }
     }
@@ -253,7 +260,7 @@ impl<S> VM<S> {
         if let VMVal::Number(n) = self.pop() {
             n
         } else {
-            panic!("expected bool on stack")
+            panic!("expected int on stack")
         }
     }
 
