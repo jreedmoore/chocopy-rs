@@ -14,7 +14,6 @@ pub struct VM<S> {
     stack: Vec<VMVal>,
     stack_base: usize,
     call_stack: Vec<CallFrame>,
-    consts: Vec<ConstVal>,
     globals: Vec<MemVal>,
     heap: Vec<MemVal>,
     pub s: S,
@@ -320,7 +319,6 @@ impl VM<IOMock> {
             stack: vec![],
             stack_base: 0,
             call_stack: vec![],
-            consts: vec![],
             globals: vec![],
             heap: vec![],
         }
