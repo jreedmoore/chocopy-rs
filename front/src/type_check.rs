@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use crate::annotated_ast::{ChocoTyped, FunId, Function, Param};
@@ -13,6 +14,8 @@ pub enum ChocoType {
     None,
     Empty,
     List(Box<ChocoType>), 
+    // I might end up wanting to turn this into a handle into the class bindings in the type environment.
+    Object(String),
 }
 impl ChocoType {
     fn is_ref(&self) -> bool {
@@ -24,17 +27,17 @@ impl ChocoType {
         }
     }
 
-    fn is_list(&self) -> bool {
-        match self {
-            ChocoType::List(_) => true,
-            _ => false
-        }
-    }
-
     fn list_inner_type(&self) -> Result<ChocoType, TypeError> {
         match self {
             ChocoType::List(t) => Ok(*t.clone()),
             _ => Err(TypeError::NotAList)
+        }
+    }
+
+    fn class_name(&self) -> Result<&str, TypeError> {
+        match self {
+            ChocoType::Object(name) => Ok(name),
+            _ => Err(TypeError::NotAClass)
         }
     }
 }
@@ -53,7 +56,7 @@ pub enum TypeError {
     Todo,
     NotBound(String),
     EmptyTargets,
-    CannotRebindLocal(String),
+    NameAlreadyBound(String),
     ExpectedRef,
     CannotTreatFunsAsLocals,
     NotBoundAsVar,
@@ -62,6 +65,11 @@ pub enum TypeError {
     CannotIndexIntoNonList,
     CannotIterateOverNonList,
     NotAList,
+    CannotTreatClassAsVar,
+    NotBoundAsFunction(String),
+    NoSuchMethod(String),
+    NotAClass,
+    NotBoundAsClass(String),
 }
 impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -89,12 +97,30 @@ impl TypeEnvironment {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Class {
+    pub methods: HashMap<String, Fun>
+}
+impl Class {
+    /// A minimal class binding
+    fn shell() -> Class {
+        Class {
+            methods: HashMap::new()
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Fun {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_type: ChocoType,
+}
+
 pub enum TypeBinding {
     V(annotated_ast::Var),
-    Fun {
-        params: Vec<ChocoType>,
-        result: ChocoType,
-    },
+    Fun(Fun),
+    Class(Class)
 }
 impl TypeBinding {
     fn as_var(&self) -> Result<&annotated_ast::Var, TypeError> {
@@ -314,12 +340,7 @@ impl TypeChecker {
 
                 let es = self.check_exprs(es)?;
                 for (e, p) in es.iter().zip(fun.params.iter()) {
-                    if e.choco_type() != p.choco_type {
-                        return Err(TypeError::TypeMismatch {
-                            expected: p.choco_type.clone(),
-                            actual: e.choco_type(),
-                        });
-                    }
+                    self.is_assignable(&p.choco_type, &e.choco_type())?
                 }
 
                 Ok(annotated_ast::Expression::Call {
@@ -357,7 +378,22 @@ impl TypeChecker {
                     }),
                 }
             }
-            ast::Expression::MemberCall(_, _) => todo!(),
+            ast::Expression::MemberCall(m, es) => {
+                let me = self.check_expression(&m.expr)?;
+                let cls = self.lookup_class(&me.choco_type())?;
+                let method = cls.methods.get(&m.id.name).ok_or(TypeError::NoSuchMethod(m.id.name.clone()))?;
+
+                let es = self.check_exprs(es)?;
+                for (e, p) in es.iter().zip(method.params.iter().skip(1)) {
+                    self.is_assignable(&p.choco_type, &e.choco_type())?
+                }
+
+                Ok(annotated_ast::Expression::MemberCall{
+                    member: annotated_ast::MemberExpression { expr: Box::new(me), name: m.id.name.clone() }, 
+                    params: es,
+                    choco_type: method.return_type.clone(),
+                })
+            }
         }
     }
 
@@ -375,7 +411,7 @@ impl TypeChecker {
     pub fn resolve_target(&self, t: &ast::Target) -> Result<annotated_ast::Lhs, TypeError> {
         match t {
             ast::Target::Id(name) => Ok(annotated_ast::Lhs::Var(self.get_local(&name.name)?.clone())),
-            ast::Target::Member(_) => Err(TypeError::Todo),
+            ast::Target::Member(_) => todo!(),
             ast::Target::Index(access) => {
                 let list = self.check_expression(&access.expr)?;
                 let inner_type = list.choco_type().list_inner_type()?;
@@ -414,7 +450,7 @@ impl TypeChecker {
                 }
                 for target in targets {
                     let tlhs = self.resolve_target(target)?.clone();
-                    self.is_assignable(tlhs.choco_type(), e.choco_type())?;
+                    self.is_assignable(&tlhs.choco_type(), &e.choco_type())?;
                     lhs.push(tlhs);
                 }
                 Ok(vec![annotated_ast::Statement::Assign(lhs, e)])
@@ -548,7 +584,7 @@ impl TypeChecker {
                 "bool" => Ok(ChocoType::Bool),
                 "int" => Ok(ChocoType::Int),
                 "str" => Ok(ChocoType::Str),
-                _ => Err(TypeError::Todo),
+                object => Ok(ChocoType::Object(object.to_owned())),
             },
             Type::List(ty) => Ok(ChocoType::List(Box::new(self.resolve_type(ty)?)))
         }
@@ -561,12 +597,7 @@ impl TypeChecker {
         let bound_type = self.resolve_type(&def.var.typ)?;
         let init_lit = self.check_expression(&ast::Expression::Lit(def.literal.clone()))?;
         let init = init_lit.choco_type();
-        if bound_type != init {
-            return Err(TypeError::TypeMismatch {
-                expected: bound_type,
-                actual: init,
-            });
-        }
+        self.is_assignable(&bound_type, &init)?;
         let v = self.add_local(def.var.id.name.clone(), bound_type)?.clone();
         Ok(vec![annotated_ast::Statement::Declare(
             v,
@@ -613,10 +644,20 @@ impl TypeChecker {
                 self.pop_environment();
                 self.finish_fun();
 
-                // do I need a CFG to determine if this function returns?
                 Ok(vec![])
             }
-            ast::Definition::Class(_) => todo!(),
+            ast::Definition::Class(cls) => {
+                self.add_class_shell(cls.id.name.clone())?;
+
+                for method in &cls.funcs {
+                    let mut method = method.clone();
+                    let name = method.id.name.clone();
+                    method.id.name = cls.id.name.clone() + &"$" + method.id.name.as_str();
+                    self.check_def(&ast::Definition::Func(method))?;
+                    self.add_class_method(&cls.id.name, name)?;
+                }
+                Ok(vec![])
+            }
         }
     }
 
@@ -644,6 +685,7 @@ impl TypeChecker {
             .and_then(|tb| match tb {
                 TypeBinding::V(v) => Ok(v),
                 TypeBinding::Fun { .. } => Err(TypeError::CannotTreatFunsAsLocals),
+                TypeBinding::Class(_) => Err(TypeError::CannotTreatClassAsVar),
             })
     }
 
@@ -659,7 +701,7 @@ impl TypeChecker {
             .bindings
             .contains_key(&name)
         {
-            Err(TypeError::CannotRebindLocal(name.clone()))
+            Err(TypeError::NameAlreadyBound(name.clone()))
         } else {
             let v = annotated_ast::Var::Local {
                 name: name.clone(),
@@ -674,12 +716,39 @@ impl TypeChecker {
         }
     }
 
+    fn add_class_shell(&mut self, name: String) -> Result<(), TypeError> {
+        if self.environments.last().unwrap().bindings.contains_key(&name) {
+            return Err(TypeError::NameAlreadyBound(name.clone()));
+        }
+        self.environments
+            .last_mut()
+            .unwrap()
+            .bindings
+            .insert(name, TypeBinding::Class(Class::shell()));
+        Ok(())
+    }
+
+    fn add_class_method(&mut self, name: &str, method: String) -> Result<(), TypeError> {
+        let fun = self.get_fun(&(name.to_owned() + &"$" + &method))?.into_owned();
+        let cls = self.get_class_mut(name)?;
+        cls.methods.insert(method, fun);
+        Ok(())
+    }
+
     fn push_environment(&mut self) {
         self.environments.push(TypeEnvironment::new())
     }
 
     fn pop_environment(&mut self) {
         self.environments.pop();
+    }
+
+    fn current_env(&self) -> &TypeEnvironment {
+        self.environments.last().unwrap()
+    }
+
+    fn current_env_mut(&mut self) -> &mut TypeEnvironment {
+        self.environments.last_mut().unwrap()
     }
 
     fn start_fun(
@@ -689,6 +758,14 @@ impl TypeChecker {
         result_type: ChocoType,
     ) -> Result<(), TypeError> {
         // todo: should fail on name collision
+        if self.current_env().bindings.contains_key(&name) {
+            return Err(TypeError::NameAlreadyBound(name))
+        }
+        self.current_env_mut().bindings.insert(name.clone(), TypeBinding::Fun(Fun {
+            name: name.clone(),
+            params: params.clone(),
+            return_type: result_type.clone()
+        }));
         Ok(self.funs.push(Function::new(name, params, result_type)))
     }
 
@@ -708,14 +785,12 @@ impl TypeChecker {
         self.funs.last_mut().unwrap().body.append(stmts)
     }
 
-    fn get_fun(&self, name: &str) -> Result<&annotated_ast::Function, TypeError> {
-        let f = { |fun: &&annotated_ast::Function| fun.name == name };
-        self.funs
-            .iter()
-            .find(f)
-            .or_else(|| self.program.funs.iter().find(f))
-            .map(|f| Ok(f))
-            .unwrap_or(Err(TypeError::NotBound(name.to_owned())))
+    fn get_fun(&self, name: &str) -> Result<Cow<Fun>, TypeError> {
+        self.current_env().bindings.get(name).ok_or(TypeError::NotBound(name.to_owned())).and_then(|tb| match tb {
+            TypeBinding::Fun(f) => Ok(Cow::Borrowed(f)),
+            TypeBinding::Class(_) => Ok(Cow::Owned(Fun { name: name.to_owned() + &"$__init__", params: vec![], return_type: ChocoType::Object(name.to_owned())})),
+            _ => Err(TypeError::NotBoundAsFunction(name.to_owned()))
+        })
     }
 
     fn exactly_one_param(es: Vec<annotated_ast::Expression>) -> Result<annotated_ast::Expression, TypeError> {
@@ -726,14 +801,28 @@ impl TypeChecker {
         }
     }
 
-    fn is_assignable(&self, to: ChocoType, from: ChocoType) -> Result<(), TypeError> {
-        if to != from {
-            Err(TypeError::TypeMismatch { expected: to, actual: from })
-        } else {
-            Ok(())
+    fn is_assignable(&self, to: &ChocoType, from: &ChocoType) -> Result<(), TypeError> {
+        match (to, from) {
+            (to, from) if to == from => Ok(()),
+            (ChocoType::Object(_), ChocoType::None) => Ok(()),
+            (to, from) => Err(TypeError::TypeMismatch { expected: to.clone(), actual: from.clone() }),
         }
     }
-        
+
+    fn lookup_class(&self, choco_type: &ChocoType) -> Result<&Class, TypeError> {
+        let cls_name = choco_type.class_name()?;
+        self.current_env().bindings.get(cls_name).ok_or(TypeError::NotBound(cls_name.to_owned())).and_then(|tb| match tb {
+            TypeBinding::Class(c) => Ok(c),
+            _ => Err(TypeError::NotBoundAsClass(cls_name.to_owned()))
+        })
+    }
+
+    fn get_class_mut(&mut self, name: &str) -> Result<&mut Class, TypeError> {
+        self.current_env_mut().bindings.get_mut(name).ok_or(TypeError::NotBound(name.to_owned())).and_then(|tb| match tb {
+            TypeBinding::Class(ref mut c) => Ok(c),
+            _ => Err(TypeError::NotBoundAsClass(name.to_owned()))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -866,5 +955,15 @@ mod tests {
     #[test]
     fn test_assignability_analysis() {
         assert_fails_type_check("x: [int] = []"); //TODO: this should succeed!
+    }
+
+    #[test]
+    fn test_classes() {
+        // because a delcaration only takes literals, we _have_ to write:
+        // x: Foo = None
+        // x = Foo()
+        // we can't write x: Foo = Foo()
+        parse_and_type_check("class Foo(object):\n  def foo(self: \"Foo\"):\n    pass\nx: Foo = None\nx = Foo()").unwrap();
+        parse_and_type_check("class Foo(object):\n  def foo(self: \"Foo\"):\n    pass\nx: Foo = None\nx = Foo()\nx.foo()").unwrap();
     }
 }

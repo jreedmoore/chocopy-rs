@@ -298,6 +298,7 @@ impl Lower {
                 }
                 t => panic!("Unsupported type for index {:?}", t),
             },
+            Expression::MemberCall { member, params, choco_type } => todo!(),
         }
     }
 

@@ -18,7 +18,7 @@ pub struct ClassDef {
     pub vars: Vec<VariableDef>,
     pub funcs: Vec<FunctionDef>,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionDef {
     pub id: Identifier,
     pub params: Vec<TypedVar>,
@@ -29,7 +29,7 @@ pub struct FunctionDef {
     pub stmts: Vec<Statement>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Declaration {
     NonLocal(Identifier),
     Global(Identifier),
@@ -44,7 +44,7 @@ pub enum Type {
     Id(Identifier),
     List(Box<Type>),
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VariableDef {
     pub var: TypedVar,
     pub literal: Literal,
@@ -55,12 +55,12 @@ pub struct Identifier {
     pub name: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConditionalBlock {
     pub condition: Expression,
     pub then: Vec<Statement>,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     Pass,
     Expr(Expression),
@@ -144,7 +144,7 @@ pub enum BinOp {
     Is,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Target {
     Id(Identifier),
     Member(MemberExpression),

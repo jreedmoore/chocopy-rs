@@ -65,6 +65,17 @@ pub enum Expression {
         expr: Box<Expression>,
         index: Box<Expression>,
     },
+    MemberCall {
+        member: MemberExpression,
+        params: Vec<Expression>,
+        choco_type: ChocoType,
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MemberExpression {
+    pub expr: Box<Expression>,
+    pub name: String,
 }
 impl ChocoTyped for Expression {
     fn choco_type(&self) -> ChocoType {
@@ -76,6 +87,7 @@ impl ChocoTyped for Expression {
             Expression::Ternary { choco_type, .. } => choco_type.clone(),
             Expression::Load { v } => v.choco_type(),
             Expression::Index { expr, .. } => expr.choco_type(),
+            Expression::MemberCall { choco_type, .. } => choco_type.clone(),
         }
     }
 }
@@ -146,8 +158,6 @@ impl ChocoTyped for Lhs {
         }
     }
 }
-
-
 
 pub(crate) trait ChocoTyped {
     fn choco_type(&self) -> ChocoType;
