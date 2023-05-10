@@ -714,7 +714,7 @@ impl<'a> Parser<'a> {
             Token::Dot => {
                 let id = self.identifier()?;
                 let lhs = self.exprs.pop()?;
-                Some(ast::Expression::Member(ast::MemberExpression {
+                Some(ast::Expression::MemberAccess(ast::MemberExpression {
                     expr: Box::new(lhs),
                     id,
                 }))
@@ -739,7 +739,7 @@ impl<'a> Parser<'a> {
         }
         self.consume(Token::CloseParen, "call")?;
         Some(match lhs {
-            ast::Expression::Member(m) => ast::Expression::MemberCall(m, args),
+            ast::Expression::MemberAccess(m) => ast::Expression::MemberCall(m, args),
             ast::Expression::Id(id) => ast::Expression::Call(id, args),
             t => panic!("Unexpected lhs in call {:?}", t),
         })
@@ -756,7 +756,7 @@ impl<'a> Parser<'a> {
         for e in exprs {
             match e {
                 ast::Expression::Id(i) => targets.push(ast::Target::Id(i)),
-                ast::Expression::Member(m) => targets.push(ast::Target::Member(m)),
+                ast::Expression::MemberAccess(m) => targets.push(ast::Target::Member(m)),
                 ast::Expression::Index(idx) => targets.push(ast::Target::Index(idx)),
                 _ => {
                     self.error(ParseError::UnexpectedExprInTargetPosition);

@@ -136,32 +136,32 @@ impl Lower {
         }
     }
 
-    fn lower_expr(&mut self, e: &Expression) {
-        match e {
-            Expression::Lit {
+    fn lower_literal(&mut self, l: &TyLiteral) {
+        match l {
+            TyLiteral {
                 l: Literal::True,
                 ..
             } => self.push_instr(Instr::BoolConst(true)),
-            Expression::Lit {
+            TyLiteral {
                 l: Literal::False,
                 ..
             } => self.push_instr(Instr::BoolConst(false)),
-            Expression::Lit {
+            TyLiteral {
                 l: Literal::Integer(i),
                 ..
             } => self.push_instr(Instr::NumConst(*i)),
-            Expression::Lit {
+            TyLiteral {
                 l: Literal::None,
                 ..
             } => self.push_instr(Instr::NoneConst),
-            Expression::Lit {
+            TyLiteral {
                 l: Literal::Str(s),
                 ..
             } => {
                 let idx = self.push_constant(s);
                 self.push_instr(Instr::LoadConstant(idx));
             }
-            Expression::Lit {
+            TyLiteral {
                 l: Literal::List(exprs),
                 ..
             } => {
@@ -173,6 +173,12 @@ impl Lower {
                     self.push_instr(Instr::ListAssign);
                 }
             }
+        }
+    }
+
+    fn lower_expr(&mut self, e: &Expression) {
+        match e {
+            Expression::Lit { l } => self.lower_literal(l),
             Expression::Unary {
                 op: annotated_ast::UnaryOp::LogicalNot,
                 e,
@@ -299,6 +305,7 @@ impl Lower {
                 t => panic!("Unsupported type for index {:?}", t),
             },
             Expression::MemberCall { member, params, choco_type } => todo!(),
+            Expression::MemberAccess { target, choco_type } => todo!(),
         }
     }
 

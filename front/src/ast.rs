@@ -107,7 +107,7 @@ pub enum Expression {
     Id(Identifier),
     Lit(Literal),
     ListLiteral(Vec<Expression>),
-    Member(MemberExpression),
+    MemberAccess(MemberExpression),
     Index(IndexExpression),
     MemberCall(MemberExpression, Vec<Expression>),
     Call(Identifier, Vec<Expression>),

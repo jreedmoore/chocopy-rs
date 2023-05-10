@@ -70,6 +70,7 @@ pub enum TypeError {
     NoSuchMethod(String),
     NotAClass,
     NotBoundAsClass(String),
+    NoSuchMemberVar(String),
 }
 impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -99,13 +100,15 @@ impl TypeEnvironment {
 
 #[derive(Debug, Clone)]
 pub struct Class {
-    pub methods: HashMap<String, Fun>
+    pub methods: HashMap<String, Fun>,
+    pub vars: HashMap<String, annotated_ast::TyLiteral>,
 }
 impl Class {
     /// A minimal class binding
     fn shell() -> Class {
         Class {
-            methods: HashMap::new()
+            methods: HashMap::new(),
+            vars: HashMap::new(),
         }
     }
 }
@@ -156,6 +159,38 @@ impl TypeChecker {
         }
     }
 
+    pub fn transform_base_literal(l: &ast::Literal) -> annotated_ast::TyLiteral {
+        match l {
+            ast::Literal::None => annotated_ast::TyLiteral { l: annotated_ast::Literal::None, choco_type: ChocoType::None },
+            ast::Literal::True => annotated_ast::TyLiteral { l: annotated_ast::Literal::True, choco_type: ChocoType::Bool },
+            ast::Literal::False => annotated_ast::TyLiteral { l: annotated_ast::Literal::False, choco_type: ChocoType::Bool },
+            ast::Literal::Integer(n) => annotated_ast::TyLiteral { l: annotated_ast::Literal::Integer(*n), choco_type: ChocoType::Int },
+            ast::Literal::Str(s) => annotated_ast::TyLiteral { l: annotated_ast::Literal::Str(s.clone()), choco_type: ChocoType::Str },
+            ast::Literal::IdStr(id) => annotated_ast::TyLiteral { l: annotated_ast::Literal::Str(id.name.clone()), choco_type: ChocoType::Str },
+            ast::Literal::List(_) => unimplemented!()
+        }
+    }
+
+    pub fn base_literal_to_expr(l: &ast::Literal) -> annotated_ast::Expression {
+        annotated_ast::Expression::Lit { l: TypeChecker::transform_base_literal(l) }
+    }
+
+    pub fn check_literal(
+        &self,
+        l: &ast::Literal
+    ) -> Result<annotated_ast::TyLiteral, TypeError> {
+        Ok(match l {
+            ast::Literal::List(es) if es.is_empty() => annotated_ast::TyLiteral { l: annotated_ast::Literal::List(vec![]), choco_type: ChocoType::Empty },
+            ast::Literal::List(es) => {
+                let es = self.check_exprs(es)?;
+                //TODO: compute join of types
+                let ty = es[0].choco_type();
+                annotated_ast::TyLiteral { l: annotated_ast::Literal::List(es), choco_type: ChocoType::List(Box::new(ty))}
+            }
+            base => TypeChecker::transform_base_literal(base),
+        })
+    }
+
     pub fn check_expression(
         &self,
         e: &ast::Expression,
@@ -174,7 +209,7 @@ impl TypeChecker {
                 let ar = TypeChecker::match_type(ChocoType::Bool, self.check_expression(r)?)?;
                 Ok(annotated_ast::Expression::Ternary {
                     cond: Box::new(annotated_ast::Expression::Unary { op: annotated_ast::UnaryOp::LogicalNot, e: Box::new(al), choco_type: ChocoType::Bool }),
-                    then: Box::new(annotated_ast::Expression::Lit { l: annotated_ast::Literal::False, choco_type: ChocoType::Bool }),
+                    then: Box::new(TypeChecker::base_literal_to_expr(&ast::Literal::False)),
                     els: Box::new(ar),
                     choco_type: ChocoType::Bool,
                 })
@@ -184,7 +219,7 @@ impl TypeChecker {
                 let ar = TypeChecker::match_type(ChocoType::Bool, self.check_expression(r)?)?;
                 Ok(annotated_ast::Expression::Ternary {
                     cond: Box::new(al),
-                    then: Box::new(annotated_ast::Expression::Lit { l: annotated_ast::Literal::True, choco_type: ChocoType::Bool }),
+                    then: Box::new(TypeChecker::base_literal_to_expr(&ast::Literal::True)),
                     els: Box::new(ar),
                     choco_type: ChocoType::Bool,
                 })
@@ -217,22 +252,8 @@ impl TypeChecker {
             }
 
             ast::Expression::Lit(lit) => {
-                let (l, choco_type) = match lit {
-                    ast::Literal::None => (annotated_ast::Literal::None, ChocoType::None),
-                    ast::Literal::True => (annotated_ast::Literal::True, ChocoType::Bool),
-                    ast::Literal::False => (annotated_ast::Literal::False, ChocoType::Bool),
-                    ast::Literal::Integer(i) => (annotated_ast::Literal::Integer(*i), ChocoType::Int),
-                    ast::Literal::Str(s) => (annotated_ast::Literal::Str(s.to_owned()), ChocoType::Str),
-                    ast::Literal::IdStr(s) => (annotated_ast::Literal::Str(s.name.to_owned()), ChocoType::Str),
-                    ast::Literal::List(es) if es.is_empty() => (annotated_ast::Literal::List(vec![]), ChocoType::Empty),
-                    ast::Literal::List(es) => {
-                        let es = self.check_exprs(es)?;
-                        //TODO: compute join of types
-                        let ty = es[0].choco_type();
-                        (annotated_ast::Literal::List(es), ChocoType::List(Box::new(ty)))
-                    }
-                };
-                Ok(annotated_ast::Expression::Lit { l, choco_type })
+                let tylit = self.check_literal(lit)?;
+                Ok(annotated_ast::Expression::Lit { l: tylit })
             }
             ast::Expression::BinaryOp(op, l, r) => {
                 let al = self.check_expression(l)?;
@@ -298,10 +319,7 @@ impl TypeChecker {
                 let n = TypeChecker::match_type(ChocoType::Int, self.check_expression(n)?)?;
                 Ok(annotated_ast::Expression::Binary {
                     op: ast::BinOp::Minus,
-                    l: Box::new(annotated_ast::Expression::Lit {
-                        l: annotated_ast::Literal::Integer(0),
-                        choco_type: ChocoType::Int
-                    }),
+                    l: Box::new(TypeChecker::base_literal_to_expr(&ast::Literal::Integer(0))),
                     r: Box::new(n),
                     choco_type: ChocoType::Int,
                 })
@@ -359,7 +377,16 @@ impl TypeChecker {
             ast::Expression::Id(id) => self
                 .get_local(&id.name)
                 .map(|v| annotated_ast::Expression::Load { v: v.clone() }),
-            ast::Expression::Member(_) => todo!(),
+            ast::Expression::MemberAccess(m) => {
+                let me = self.check_expression(&m.expr)?;
+                let cls = self.lookup_class(&me.choco_type())?;
+
+                let v = cls.vars.get(&m.id.name).ok_or(TypeError::NoSuchMemberVar(m.id.name.clone()))?;
+                Ok(annotated_ast::Expression::MemberAccess {
+                    target: annotated_ast::MemberExpression { expr: Box::new(me), name: m.id.name.clone() },
+                    choco_type: v.choco_type()
+                })
+            }
             ast::Expression::Index(ast::IndexExpression { expr, index }) => {
                 let access = self.check_expression(expr)?;
                 let index = TypeChecker::match_type(ChocoType::Int, self.check_expression(index)?)?;
@@ -439,7 +466,7 @@ impl TypeChecker {
                     Ok(vec![annotated_ast::Statement::Return(Some(Box::new(e)))])
                 } else {
                     TypeChecker::match_type(expected_type, ChocoType::None)?;
-                    Ok(vec![annotated_ast::Statement::Return(Some(Box::new(annotated_ast::Expression::Lit { l: annotated_ast::Literal::None, choco_type: ChocoType::None })))])
+                    Ok(vec![annotated_ast::Statement::Return(Some(Box::new(TypeChecker::base_literal_to_expr(&ast::Literal::None))))])
                 }
             }
             ast::Statement::Assign { targets, expr } => {
@@ -532,14 +559,14 @@ impl TypeChecker {
                     annotated_ast::Expression::Binary {
                         op: ast::BinOp::Plus,
                         l: Box::new(annotated_ast::Expression::Load { v: idx_local.clone() }),
-                        r: Box::new(annotated_ast::Expression::Lit { l: annotated_ast::Literal::Integer(1), choco_type: ChocoType::Int}),
+                        r: Box::new(TypeChecker::base_literal_to_expr(&ast::Literal::Integer(1))),
                         choco_type: ChocoType::Int
                     }
                 ));
                 Ok(vec![
                     annotated_ast::Statement::Declare(
                         idx_local.clone(),
-                        annotated_ast::Expression::Lit { l: annotated_ast::Literal::Integer(0), choco_type: ChocoType::Int },
+                        TypeChecker::base_literal_to_expr(&ast::Literal::Integer(0)),
                     ),
                     annotated_ast::Statement::Declare(
                         in_local.clone(),
@@ -551,7 +578,7 @@ impl TypeChecker {
                     ),
                     annotated_ast::Statement::Declare(
                         val_local.clone(),
-                        annotated_ast::Expression::Lit { l: annotated_ast::Literal::None, choco_type: ChocoType::None }
+                        TypeChecker::base_literal_to_expr(&ast::Literal::None),
                     ),
                     annotated_ast::Statement::While {
                         cond: annotated_ast::Expression::Binary { 
@@ -648,6 +675,19 @@ impl TypeChecker {
             }
             ast::Definition::Class(cls) => {
                 self.add_class_shell(cls.id.name.clone())?;
+
+                for var in &cls.vars {
+                    let bound_type = self.resolve_type(&var.var.typ)?;
+                    let init_lit = self.check_literal(&var.literal)?;
+                    let init = init_lit.choco_type();
+                    self.is_assignable(&bound_type, &init)?;
+
+                    let cls = self.get_class_mut(&cls.id.name)?;
+                    if cls.vars.contains_key(&var.var.id.name) {
+                        return Err(TypeError::NameAlreadyBound(var.var.id.name.clone()))
+                    }
+                    cls.vars.insert(var.var.id.name.clone(), init_lit);
+                }
 
                 for method in &cls.funcs {
                     let mut method = method.clone();
@@ -760,7 +800,7 @@ impl TypeChecker {
     fn finish_fun(&mut self) {
         let mut f = self.funs.pop().expect("function stack empty");
         if f.return_type == ChocoType::None && f.name != "entry" {
-            f.body.push(annotated_ast::Statement::Return(Some(Box::new(annotated_ast::Expression::Lit { l: annotated_ast::Literal::None, choco_type: ChocoType::None }))));
+            f.body.push(annotated_ast::Statement::Return(Some(Box::new(TypeChecker::base_literal_to_expr(&ast::Literal::None)))));
         }
         self.program.funs.push(f);
     }
@@ -964,5 +1004,6 @@ mod tests {
         // we can't write x: Foo = Foo()
         parse_and_type_check("class Foo(object):\n  def foo(self: \"Foo\"):\n    pass\nx: Foo = None\nx = Foo()").unwrap();
         parse_and_type_check("class Foo(object):\n  def foo(self: \"Foo\"):\n    pass\nx: Foo = None\nx = Foo()\nx.foo()").unwrap();
+        parse_and_type_check("class Bar(object):\n  x: int = 0\nb: Bar = None\nb = Bar()\nb.x").unwrap();
     }
 }

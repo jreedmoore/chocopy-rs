@@ -44,8 +44,7 @@ pub enum Expression {
         choco_type: ChocoType,
     },
     Lit {
-        l: Literal,
-        choco_type: ChocoType,
+        l: TyLiteral,
     },
     Unary {
         op: UnaryOp,
@@ -69,7 +68,8 @@ pub enum Expression {
         member: MemberExpression,
         params: Vec<Expression>,
         choco_type: ChocoType,
-    }
+    },
+    MemberAccess { target: MemberExpression, choco_type: ChocoType },
 }
 
 #[derive(Debug, Clone)]
@@ -82,12 +82,13 @@ impl ChocoTyped for Expression {
         match self {
             Expression::Binary { choco_type, .. } => choco_type.clone(),
             Expression::Call { choco_type, .. } => choco_type.clone(),
-            Expression::Lit { choco_type, .. } => choco_type.clone(),
+            Expression::Lit { l } => l.choco_type(),
             Expression::Unary { choco_type, .. } => choco_type.clone(),
             Expression::Ternary { choco_type, .. } => choco_type.clone(),
             Expression::Load { v } => v.choco_type(),
             Expression::Index { expr, .. } => expr.choco_type(),
             Expression::MemberCall { choco_type, .. } => choco_type.clone(),
+            Expression::MemberAccess { choco_type, .. } => choco_type.clone(),
         }
     }
 }
@@ -99,6 +100,17 @@ pub enum Literal {
     Integer(i32),
     Str(String),
     List(Vec<Expression>)
+}
+
+#[derive(Debug, Clone)]
+pub struct TyLiteral {
+    pub l: Literal,
+    pub choco_type: ChocoType
+}
+impl ChocoTyped for TyLiteral {
+    fn choco_type(&self) -> ChocoType {
+        self.choco_type.clone()
+    }
 }
 #[derive(Debug, Clone)]
 pub struct Function {
