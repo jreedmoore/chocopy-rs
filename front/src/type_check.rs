@@ -676,9 +676,7 @@ impl TypeChecker {
     }
 
     fn get_local(&self, name: &str) -> Result<&annotated_ast::Var, TypeError> {
-        self.environments
-            .last()
-            .unwrap()
+        self.current_env()
             .bindings
             .get(name)
             .ok_or(TypeError::NotBound(name.to_owned()))
@@ -689,40 +687,33 @@ impl TypeChecker {
             })
     }
 
+    fn is_binding_unique(&self, name: &str) -> Result<(), TypeError> {
+        if self.current_env().bindings.contains_key(name) {
+            Err(TypeError::NameAlreadyBound(name.to_owned()))
+        } else {
+            Ok(())
+        }
+    }
+
     fn add_local(
         &mut self,
         name: String,
         choco_type: ChocoType,
     ) -> Result<&annotated_ast::Var, TypeError> {
-        if self
-            .environments
-            .last()
-            .unwrap()
+        self.is_binding_unique(&name)?;
+        let v = annotated_ast::Var::Local {
+            name: name.clone(),
+            choco_type,
+        };
+        self.current_env_mut()
             .bindings
-            .contains_key(&name)
-        {
-            Err(TypeError::NameAlreadyBound(name.clone()))
-        } else {
-            let v = annotated_ast::Var::Local {
-                name: name.clone(),
-                choco_type,
-            };
-            self.environments
-                .last_mut()
-                .unwrap()
-                .bindings
-                .insert(name.clone(), TypeBinding::V(v));
-            self.environments.last().unwrap().bindings[&name].as_var()
-        }
+            .insert(name.clone(), TypeBinding::V(v));
+        self.current_env().bindings[&name].as_var()
     }
 
     fn add_class_shell(&mut self, name: String) -> Result<(), TypeError> {
-        if self.environments.last().unwrap().bindings.contains_key(&name) {
-            return Err(TypeError::NameAlreadyBound(name.clone()));
-        }
-        self.environments
-            .last_mut()
-            .unwrap()
+        self.is_binding_unique(&name)?;
+        self.current_env_mut()
             .bindings
             .insert(name, TypeBinding::Class(Class::shell()));
         Ok(())
@@ -757,10 +748,7 @@ impl TypeChecker {
         params: Vec<annotated_ast::Param>,
         result_type: ChocoType,
     ) -> Result<(), TypeError> {
-        // todo: should fail on name collision
-        if self.current_env().bindings.contains_key(&name) {
-            return Err(TypeError::NameAlreadyBound(name))
-        }
+        self.is_binding_unique(&name)?;
         self.current_env_mut().bindings.insert(name.clone(), TypeBinding::Fun(Fun {
             name: name.clone(),
             params: params.clone(),
@@ -785,8 +773,17 @@ impl TypeChecker {
         self.funs.last_mut().unwrap().body.append(stmts)
     }
 
+    fn lookup_binding(&self, name: &str) -> Result<&TypeBinding, TypeError> {
+        for env in self.environments.iter().rev() {
+            if let Some(tb) = env.bindings.get(name) {
+                return Ok(tb)
+            }
+        }
+        Err(TypeError::NotBound(name.to_owned()))
+    }
+
     fn get_fun(&self, name: &str) -> Result<Cow<Fun>, TypeError> {
-        self.current_env().bindings.get(name).ok_or(TypeError::NotBound(name.to_owned())).and_then(|tb| match tb {
+        self.lookup_binding(name).and_then(|tb| match tb {
             TypeBinding::Fun(f) => Ok(Cow::Borrowed(f)),
             TypeBinding::Class(_) => Ok(Cow::Owned(Fun { name: name.to_owned() + &"$__init__", params: vec![], return_type: ChocoType::Object(name.to_owned())})),
             _ => Err(TypeError::NotBoundAsFunction(name.to_owned()))
@@ -811,14 +808,14 @@ impl TypeChecker {
 
     fn lookup_class(&self, choco_type: &ChocoType) -> Result<&Class, TypeError> {
         let cls_name = choco_type.class_name()?;
-        self.current_env().bindings.get(cls_name).ok_or(TypeError::NotBound(cls_name.to_owned())).and_then(|tb| match tb {
+        self.lookup_binding(cls_name).and_then(|tb| match tb {
             TypeBinding::Class(c) => Ok(c),
             _ => Err(TypeError::NotBoundAsClass(cls_name.to_owned()))
         })
     }
 
     fn get_class_mut(&mut self, name: &str) -> Result<&mut Class, TypeError> {
-        self.current_env_mut().bindings.get_mut(name).ok_or(TypeError::NotBound(name.to_owned())).and_then(|tb| match tb {
+        self.environments.first_mut().unwrap().bindings.get_mut(name).ok_or(TypeError::NotBound(name.to_owned())).and_then(|tb| match tb {
             TypeBinding::Class(ref mut c) => Ok(c),
             _ => Err(TypeError::NotBoundAsClass(name.to_owned()))
         })
@@ -936,6 +933,8 @@ mod tests {
             parse_and_type_check("def f(x: int) -> int:\n  return x\nf(1)").unwrap(),
             ChocoType::Int
         );
+        parse_and_type_check("def f():\n  pass\ndef g():\n  f()").unwrap();
+        parse_and_type_check("def f():\n  f()").unwrap();
         assert_fails_type_check("return");
         assert_fails_type_check("def f() -> int\n  return False");
     }
