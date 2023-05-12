@@ -5,11 +5,18 @@ use crate::{
 
 pub struct Program {
     pub funs: Vec<Function>,
+    pub classes: Vec<Class>
 }
 impl Program {
     pub(crate) fn new() -> Program {
-        Program { funs: vec![] }
+        Program { funs: vec![], classes: vec![] }
     }
+}
+
+pub struct Class {
+    pub name: String,
+    pub vars: Vec<(String, TyLiteral)>,
+    pub methods: Vec<(String, FunId)>,
 }
 
 #[derive(Debug, Clone)]
@@ -65,7 +72,7 @@ pub enum Expression {
         index: Box<Expression>,
     },
     MemberCall {
-        member: MemberExpression,
+        target: MemberExpression,
         params: Vec<Expression>,
         choco_type: ChocoType,
     },
@@ -75,7 +82,7 @@ pub enum Expression {
 #[derive(Debug, Clone)]
 pub struct MemberExpression {
     pub expr: Box<Expression>,
-    pub name: String,
+    pub offset: usize,
 }
 impl ChocoTyped for Expression {
     fn choco_type(&self) -> ChocoType {

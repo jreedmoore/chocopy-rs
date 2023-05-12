@@ -11,6 +11,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct Program {
     pub start: String,
+    pub blocks: Vec<Block>, // for dispatch tables
     pub funcs: Vec<Function>,
     pub consts: Vec<ConstVal>,
 }
@@ -24,6 +25,7 @@ impl Program {
     pub fn new() -> Program {
         Program {
             start: "entry".to_owned(),
+            blocks: vec![],
             funcs: vec![],
             consts: vec![],
         }
@@ -68,6 +70,14 @@ impl FlatProgram {
         let mut instruction_count: isize = 0;
         let mut block_offsets: Vec<isize> = vec![];
         let mut block_names: HashMap<String, usize> = HashMap::new();
+        
+        for block in &prog.blocks {
+            if let Some(name) = &block.label {
+                block_names.insert(name.clone(), block_offsets.len());
+            }
+            block_offsets.push(instruction_count);
+            instruction_count += block.instrs.len() as isize;
+        }
         for func in &prog.funcs {
             block_names.insert(func.label.to_owned(), block_offsets.len());
             for block in &func.blocks {
@@ -76,7 +86,7 @@ impl FlatProgram {
             }
         }
         if FLATTEN_DEBUG {
-            println!("{:?}\n{:?}", prog.funcs, block_offsets);
+            println!("{:?}\n{:?}\n{:?}", prog.funcs, block_offsets, block_names);
         }
 
         let start = block_offsets[*block_names
@@ -90,26 +100,34 @@ impl FlatProgram {
         };
         let mut instruction_pointer: usize = 0;
         let mut block_pointer: usize = 0;
-        for func in prog.funcs {
-            for block in func.blocks {
-                for instr in block.instrs {
-                    flat.instrs.push(instr.map(|block_off| match block_off {
-                        BlockLocation::BlockOffset(off) => {
-                            let dest_idx = block_pointer.checked_add_signed(off).expect("block pointer overflow");
-                            let block_begin = block_offsets[dest_idx];
-                            // -1 because IP is _next_ instruction
-                            let instr_offset = (block_begin as isize) - (instruction_pointer as isize) - 1;
-                            if FLATTEN_DEBUG {
-                                println!("BlockOffset {} from blocks {} to {}, from instr {} to {}, offset = {}", off, block_pointer, dest_idx, instruction_pointer, block_begin, instr_offset);
-                            }
-                            InstrLocation::InstrOffset(instr_offset)
-                        },
-                        BlockLocation::Named(name) => InstrLocation::InstrAbsolute(block_offsets[*block_names.get(&name).expect("undeclared reference to block label")] as usize)
-                    }));
-                    instruction_pointer += 1;
-                }
-                block_pointer += 1;
+        let all_blocks = prog.blocks.into_iter().chain(prog.funcs.into_iter().flat_map(|f| f.blocks.into_iter()));
+        for block in all_blocks {
+            if FLATTEN_DEBUG {
+                println!("block.label {:?}", block.label);
             }
+            for instr in block.instrs {
+                flat.instrs.push(instr.map(|block_off| match block_off {
+                    BlockLocation::BlockOffset(off) => {
+                        let dest_idx = block_pointer.checked_add_signed(off).expect("block pointer overflow");
+                        let block_begin = block_offsets[dest_idx];
+                        // -1 because IP is _next_ instruction
+                        let instr_offset = (block_begin as isize) - (instruction_pointer as isize) - 1;
+                        if FLATTEN_DEBUG {
+                            println!("BlockOffset {} from blocks {} to {}, from instr {} to {}, offset = {}", off, block_pointer, dest_idx, instruction_pointer, block_begin, instr_offset);
+                        }
+                        InstrLocation::InstrOffset(instr_offset)
+                    },
+                    BlockLocation::Named(name) => {
+                        if FLATTEN_DEBUG {
+                            println!("BlockLocation::Named({})", name);
+                        }
+                        InstrLocation::InstrAbsolute(block_offsets[*block_names.get(&name).expect("undeclared reference to block label")] as usize)
+                    }
+                }));
+                instruction_pointer += 1;
+            }
+            block_pointer += 1;
+
         }
 
         flat
@@ -126,14 +144,14 @@ pub struct Block {
     pub instrs: Vec<Instr<BlockLocation>>,
 }
 impl Block {
-    fn new() -> Block {
+    pub fn new() -> Block {
         Block {
             label: None,
             instrs: vec![],
         }
     }
 
-    fn named(name: String) -> Block {
+    pub fn named(name: String) -> Block {
         Block {
             label: Some(name),
             instrs: vec![],
@@ -190,6 +208,13 @@ pub enum Instr<Loc> {
     ListIndex,
     // expects [VMVal ListRef Int] on stack
     ListAssign,
+
+    ClassAlloc(usize, Loc),
+    ClassMemberStore(usize),
+    ClassMemberLoad(usize),
+
+    // expects ObjRef and params on stack, uses usize as offset into dispatch table
+    ClassMethodCall { offset: usize, arity: usize },
 }
 impl<A> Instr<A> {
     fn map<B, F>(self, f: F) -> Instr<B>
@@ -234,6 +259,11 @@ impl<A> Instr<A> {
             ListAssign => ListAssign,
             ListIndex => ListIndex,
             ListConcat => ListConcat,
+
+            ClassAlloc(vars, dispatch_table) => ClassAlloc(vars, f(dispatch_table)),
+            ClassMemberStore(offset) => ClassMemberStore(offset),
+            ClassMemberLoad(offset) => ClassMemberLoad(offset),
+            ClassMethodCall{offset, arity } => ClassMethodCall {offset, arity },
         }
     }
 }
@@ -244,7 +274,7 @@ pub enum BlockLocation {
     Named(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum InstrLocation {
     InstrOffset(isize),
     InstrAbsolute(usize),

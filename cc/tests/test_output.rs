@@ -112,3 +112,32 @@ fn test_short_circuiting() {
     assert_output(&with_preamble("f() and False"), vec!["f"]);
     assert_output(&with_preamble("False and f()"), vec![]);
 }
+
+#[test]
+fn test_classes() {
+    let method = r#"
+class A(object):
+    def a(self: "A"):
+        print("a")
+
+x: A = None
+x = A()
+x.a()
+    "#;
+
+    assert_output(method, vec!["a"]);
+
+    let var = r#"
+class B(object):
+    b: int = 1
+    
+x: B = None
+x = B()
+print(x.b)
+# x.b = 2
+print(x.b)
+    "#;
+
+    //TODO: implement class member var store
+    assert_output(var, vec!["1", "2"]);
+}

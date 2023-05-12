@@ -1,4 +1,4 @@
-use middle::stack::{self, ConstVal};
+use middle::stack::{self, ConstVal, InstrLocation};
 
 const VM_DEBUG: bool = false;
 
@@ -82,7 +82,8 @@ impl<S> VM<S> {
                                 panic!("expected string at heap location {:?}", idx);
                             }
                         }
-                        VMVal::ListRef(idx) => todo!("list print support")
+                        VMVal::ListRef(idx) => todo!("list print support"),
+                        VMVal::ObjRef(_) => todo!("obj print support"),
                     };
                     (self.print)(&mut self.s, s)
                 }
@@ -198,6 +199,33 @@ impl<S> VM<S> {
                     let l = self.heap_as_list_mut(l_ref);
                     l[index as usize] = val;
                 }
+                stack::Instr::ClassAlloc(var_count, dispatch_loc) => {
+                    let idx = self.alloc(MemVal::Object(Object { vars: vec![VMVal::None; *var_count], dispatch: dispatch_loc.clone() }));
+                    self.push(VMVal::ObjRef(idx))
+                }
+                stack::Instr::ClassMemberStore(offset) => {
+                    let val = self.pop();
+                    let o_ref = self.pop_obj();
+                    let o = self.heap_as_obj_mut(o_ref);
+                    o.vars[*offset] = val;
+                }
+                stack::Instr::ClassMemberLoad(offset) => {
+                    let o_ref = self.pop_obj();
+                    let o = self.heap_as_obj(o_ref);
+                    self.push(o.vars[*offset]);
+                }
+                stack::Instr::ClassMethodCall { offset, arity } => {
+                    self.call_stack.push(CallFrame {
+                        return_ip: self.instruction_pointer,
+                        return_stack_base: self.stack_base,
+                    });
+                    self.stack_base = self.stack.len() - arity;
+                    let o_ref = self.pop_obj();
+                    let o = self.heap_as_obj(o_ref);
+                    let dispatch = o.dispatch.clone();
+                    dispatch.update(&mut self.instruction_pointer);
+                    self.instruction_pointer += offset; 
+                }
             }
         }
     }
@@ -273,6 +301,14 @@ impl<S> VM<S> {
         }
     }
 
+    fn pop_obj(&mut self) -> usize {
+        if let VMVal::ObjRef(idx) = self.pop() {
+            idx
+        } else {
+            panic!("expected obj ref on stack")
+        }
+    }
+
     fn push(&mut self, v: VMVal) {
         self.stack.push(v)
     }
@@ -280,21 +316,35 @@ impl<S> VM<S> {
     fn heap_as_str(&self, idx: usize) -> &str {
         match &self.heap[idx] {
             MemVal::Str(s) => s.as_str(),
-            _ => panic!("expected Str on heap, got Unused"),
+            _ => panic!("expected Str on heap"),
         }
     }
 
     fn heap_as_list(&self, idx: usize) -> &Vec<VMVal> {
         match &self.heap[idx] {
             MemVal::List(v) => &v,
-            _ => panic!("expected Str on heap, got Unused"),
+            _ => panic!("expected List on heap"),
         }
     }
 
     fn heap_as_list_mut(&mut self, idx: usize) -> &mut Vec<VMVal> {
         match self.heap[idx] {
             MemVal::List(ref mut v) => v,
-            _ => panic!("expected Str on heap, got Unused"),
+            _ => panic!("expected List on heap"),
+        }
+    }
+
+    fn heap_as_obj(&self, idx: usize) -> &Object {
+        match &self.heap[idx] {
+            MemVal::Object(obj) => &obj,
+            _ => panic!("expected Obj on heap")
+        }
+    }
+
+    fn heap_as_obj_mut(&mut self, idx: usize) -> &mut Object {
+        match self.heap[idx] {
+            MemVal::Object(ref mut obj) => obj,
+            _ => panic!("expected Obj on heap")
         }
     }
 
@@ -309,6 +359,7 @@ impl<S> VM<S> {
         self.heap[idx] = MemVal::Unused;
     }
 }
+
 impl VM<IOMock> {
     fn new_mock_io() -> VM<IOMock> {
         VM {
@@ -342,6 +393,7 @@ pub enum VMVal {
     None,
     StrRef(usize),
     ListRef(usize),
+    ObjRef(usize),
 }
 impl VMVal {
     fn is_ref(&self) -> bool {
@@ -353,11 +405,18 @@ impl VMVal {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Object {
+    vars: Vec<VMVal>,
+    dispatch: InstrLocation,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum MemVal {
     Str(String),
     List(Vec<VMVal>),
-    Unused
+    Unused,
+    Object(Object),
 }
 impl MemVal {
     pub fn from_const(c: &ConstVal) -> MemVal {

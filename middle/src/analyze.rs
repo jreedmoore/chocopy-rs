@@ -27,12 +27,12 @@ fn check_exhaustive_returns_func(func: &stack::Function) -> Result<(), AnalyzeEr
                     out_edge = true;
                     stack.push(next.checked_add_signed(*off).expect("block offset overflow"))
                 }
-                stack::Instr::IfJump(BlockLocation::Named(_)) => return Err(AnalyzeError::NamedJumpedOutsideOfCall),
+                stack::Instr::IfJump(BlockLocation::Named(_)) => out_edge = true,
                 stack::Instr::Jump(BlockLocation::BlockOffset(off)) => {
                     out_edge = true;
                     stack.push(next.checked_add_signed(*off).expect("block offset overflow"))
                 }
-                stack::Instr::Jump(BlockLocation::Named(_)) => return Err(AnalyzeError::NamedJumpedOutsideOfCall),
+                stack::Instr::Jump(BlockLocation::Named(_)) => out_edge = true,
                 _ => (),
             }
         }
@@ -46,7 +46,6 @@ fn check_exhaustive_returns_func(func: &stack::Function) -> Result<(), AnalyzeEr
 #[derive(Debug)]
 pub enum AnalyzeError {
     FunctionWithoutReturn(String),
-    NamedJumpedOutsideOfCall,
 }
 impl Display for AnalyzeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

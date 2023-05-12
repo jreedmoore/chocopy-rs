@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-use crate::annotated_ast::{ChocoTyped, FunId, Function, Param};
+use crate::annotated_ast::{ChocoTyped, FunId, Function, Param, TyLiteral};
 use crate::ast::Type;
 use crate::{annotated_ast, ast};
 
@@ -99,16 +99,81 @@ impl TypeEnvironment {
 }
 
 #[derive(Debug, Clone)]
+struct ClassBindingInfo {
+    idx: usize,
+    is_inherited: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct Class {
-    pub methods: HashMap<String, Fun>,
-    pub vars: HashMap<String, annotated_ast::TyLiteral>,
+    name: String,
+    methods_idx: HashMap<String, ClassBindingInfo>,
+    methods: Vec<(String, Fun)>,
+    vars_idx: HashMap<String, ClassBindingInfo>,
+    vars: Vec<(String, annotated_ast::TyLiteral)>,
 }
 impl Class {
     /// A minimal class binding
-    fn shell() -> Class {
+    fn shell(name: String) -> Class {
         Class {
-            methods: HashMap::new(),
-            vars: HashMap::new(),
+            name,
+            methods_idx: HashMap::new(),
+            methods: vec![],
+            vars_idx: HashMap::new(),
+            vars: vec![],
+        }
+    }
+
+    fn add_method(&mut self, name: String, fun: Fun) -> Result<(), TypeError> {
+        if let Some(binding_info) = self.methods_idx.get(&name) {
+            if !binding_info.is_inherited {
+                return Err(TypeError::NameAlreadyBound(name))
+            } 
+            //TODO: else, check fun types
+        }
+        let idx = self.methods.len();
+        self.methods.push((name.clone(), fun));
+        self.methods_idx.insert(name, ClassBindingInfo { idx, is_inherited: false });
+        Ok(())
+    }
+
+    fn add_var(&mut self, name: String, init: annotated_ast::TyLiteral) -> Result<(), TypeError> {
+        if let Some(binding_info) = self.methods_idx.get(&name) {
+            if !binding_info.is_inherited {
+                return Err(TypeError::NameAlreadyBound(name))
+            } 
+            //TODO: else, check literal types
+        }
+        let idx = self.vars.len();
+        self.vars.push((name.clone(), init));
+        self.vars_idx.insert(name, ClassBindingInfo { idx, is_inherited: false });
+        Ok(())
+    }
+
+    fn lookup_method(&self, name: &str) -> Result<&Fun, TypeError> {
+        let binding_info = self.methods_idx.get(name).ok_or_else(|| TypeError::NotBound(name.to_owned()))?;
+        Ok(&self.methods[binding_info.idx].1)
+    }
+    
+    fn lookup_var(&self, name: &str) -> Result<&TyLiteral, TypeError> {
+        let binding_info = self.vars_idx.get(name).ok_or_else(|| TypeError::NotBound(name.to_owned()))?;
+        Ok(&self.vars[binding_info.idx].1)
+    }
+
+    fn var_offset(&self, name: &str) -> usize {
+        self.vars_idx.get(name).unwrap().idx
+    }
+
+    fn method_offset(&self, name: &str) -> usize {
+        self.methods_idx.get(name).unwrap().idx
+    }
+}
+impl From<Class> for annotated_ast::Class {
+    fn from(value: Class) -> Self {
+        annotated_ast::Class {
+            name: value.name,
+            methods: value.methods.iter().map(|(name, f)| (name.to_owned(), FunId { name: f.name.to_owned() })).collect(),
+            vars: value.vars.iter().map(|(k,v)| (k.to_owned(), v.to_owned())).collect()
         }
     }
 }
@@ -381,9 +446,9 @@ impl TypeChecker {
                 let me = self.check_expression(&m.expr)?;
                 let cls = self.lookup_class(&me.choco_type())?;
 
-                let v = cls.vars.get(&m.id.name).ok_or(TypeError::NoSuchMemberVar(m.id.name.clone()))?;
+                let v = cls.lookup_var(&m.id.name)?;
                 Ok(annotated_ast::Expression::MemberAccess {
-                    target: annotated_ast::MemberExpression { expr: Box::new(me), name: m.id.name.clone() },
+                    target: annotated_ast::MemberExpression { expr: Box::new(me), offset: cls.var_offset(&m.id.name) },
                     choco_type: v.choco_type()
                 })
             }
@@ -408,7 +473,7 @@ impl TypeChecker {
             ast::Expression::MemberCall(m, es) => {
                 let me = self.check_expression(&m.expr)?;
                 let cls = self.lookup_class(&me.choco_type())?;
-                let method = cls.methods.get(&m.id.name).ok_or(TypeError::NoSuchMethod(m.id.name.clone()))?;
+                let method = cls.lookup_method(&m.id.name)?;
 
                 let es = self.check_exprs(es)?;
                 for (e, p) in es.iter().zip(method.params.iter().skip(1)) {
@@ -416,7 +481,7 @@ impl TypeChecker {
                 }
 
                 Ok(annotated_ast::Expression::MemberCall{
-                    member: annotated_ast::MemberExpression { expr: Box::new(me), name: m.id.name.clone() }, 
+                    target: annotated_ast::MemberExpression { expr: Box::new(me), offset: cls.method_offset(&m.id.name) }, 
                     params: es,
                     choco_type: method.return_type.clone(),
                 })
@@ -682,11 +747,9 @@ impl TypeChecker {
                     let init = init_lit.choco_type();
                     self.is_assignable(&bound_type, &init)?;
 
+                    
                     let cls = self.get_class_mut(&cls.id.name)?;
-                    if cls.vars.contains_key(&var.var.id.name) {
-                        return Err(TypeError::NameAlreadyBound(var.var.id.name.clone()))
-                    }
-                    cls.vars.insert(var.var.id.name.clone(), init_lit);
+                    cls.add_var(var.var.id.name.to_owned(), init_lit)?;
                 }
 
                 for method in &cls.funcs {
@@ -696,17 +759,40 @@ impl TypeChecker {
                     self.check_def(&ast::Definition::Func(method))?;
                     self.add_class_method(&cls.id.name, name)?;
                 }
+
+                let cls_binding = self.get_class(&cls.id.name)?;
+                let has_init = cls_binding.lookup_method("__init__").is_ok();
+                if !has_init {
+                    let init_name = cls.id.name.to_owned() + &"$__init__";
+                    let ty = ChocoType::Object(cls.id.name.to_owned());
+                    self.start_fun(init_name.clone(), vec![annotated_ast::Param { name: "self".to_owned(), choco_type: ty.clone()} ], ty.clone())?;
+                    self.append_statements(&mut vec![
+                        annotated_ast::Statement::Return(
+                            Some(Box::new(annotated_ast::Expression::Load { 
+                                v: annotated_ast::Var::Local { 
+                                    name: "self".to_owned(), 
+                                    choco_type: ty
+                                }
+                            }))
+                        )]);
+                    self.finish_fun();
+                    self.add_class_method(&cls.id.name, "__init__".to_owned())?;
+                }
+                let cls_binding = self.get_class(&cls.id.name)?;
+                self.program.classes.push(annotated_ast::Class::from(cls_binding.clone()));
                 Ok(vec![])
             }
         }
     }
 
     pub fn check_prog(&mut self, p: &ast::Program) -> Result<&annotated_ast::Program, TypeError> {
-        self.start_fun("entry".to_owned(), vec![], ChocoType::None)?;
+        let mut def_stmts = vec![];
         for def in &p.defs {
-            let stmt = &mut self.check_def(def)?;
-            self.append_statements(stmt);
+            let mut stmts = &mut self.check_def(def)?;
+            def_stmts.append(&mut stmts);
         }
+        self.start_fun("entry".to_owned(), vec![], ChocoType::None)?;
+        self.append_statements(&mut def_stmts);
         for stmt in &p.stmts {
             let stmt = &mut self.check_stmt(&stmt)?;
             self.append_statements(stmt);
@@ -755,14 +841,14 @@ impl TypeChecker {
         self.is_binding_unique(&name)?;
         self.current_env_mut()
             .bindings
-            .insert(name, TypeBinding::Class(Class::shell()));
+            .insert(name.clone(), TypeBinding::Class(Class::shell(name)));
         Ok(())
     }
 
     fn add_class_method(&mut self, name: &str, method: String) -> Result<(), TypeError> {
         let fun = self.get_fun(&(name.to_owned() + &"$" + &method))?.into_owned();
         let cls = self.get_class_mut(name)?;
-        cls.methods.insert(method, fun);
+        cls.add_method(method, fun);
         Ok(())
     }
 
@@ -825,7 +911,7 @@ impl TypeChecker {
     fn get_fun(&self, name: &str) -> Result<Cow<Fun>, TypeError> {
         self.lookup_binding(name).and_then(|tb| match tb {
             TypeBinding::Fun(f) => Ok(Cow::Borrowed(f)),
-            TypeBinding::Class(_) => Ok(Cow::Owned(Fun { name: name.to_owned() + &"$__init__", params: vec![], return_type: ChocoType::Object(name.to_owned())})),
+            TypeBinding::Class(_) => Ok(Cow::Owned(Fun { name: name.to_owned() + &"$$new", params: vec![], return_type: ChocoType::Object(name.to_owned())})),
             _ => Err(TypeError::NotBoundAsFunction(name.to_owned()))
         })
     }
@@ -851,6 +937,13 @@ impl TypeChecker {
         self.lookup_binding(cls_name).and_then(|tb| match tb {
             TypeBinding::Class(c) => Ok(c),
             _ => Err(TypeError::NotBoundAsClass(cls_name.to_owned()))
+        })
+    }
+    
+    fn get_class(&self, name: &str) -> Result<&Class, TypeError> {
+        self.lookup_binding(name).and_then(|tb| match tb {
+            TypeBinding::Class(c) => Ok(c),
+            _ => Err(TypeError::NotBoundAsClass(name.to_owned()))
         })
     }
 

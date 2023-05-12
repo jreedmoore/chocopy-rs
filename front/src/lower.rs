@@ -56,6 +56,23 @@ impl Lower {
     }
 
     pub fn lower_prog(&mut self, prog: &annotated_ast::Program) -> &stack::Program {
+        for class in &prog.classes {
+            let dispatch_name = class.name.to_owned() + &"$$dispatch";
+            let mut dispatch = stack::Block::named(dispatch_name.clone());
+            for (_, funid) in &class.methods {
+                dispatch.instrs.push(Instr::Jump(BlockLocation::Named(funid.name.to_owned())))
+            }
+            self.lowered.blocks.push(dispatch);
+
+            self.lowered.start_function(class.name.to_owned() + &"$$new", true);
+            self.push_instr(Instr::ClassAlloc(class.vars.len(), BlockLocation::Named(dispatch_name)));
+            for (idx, (_, init_val)) in class.vars.iter().enumerate() {
+                self.push_instr(Instr::Duplicate(0));
+                self.lower_literal(init_val);
+                self.push_instr(Instr::ClassMemberStore(idx))
+            }
+            self.push_instr(Instr::Jump(BlockLocation::Named(class.name.to_owned() + &"$__init__")))
+        }
         for fun in &prog.funs {
             self.locals.clear();
             for p in &fun.params {
@@ -304,8 +321,17 @@ impl Lower {
                 }
                 t => panic!("Unsupported type for index {:?}", t),
             },
-            Expression::MemberCall { member, params, choco_type } => todo!(),
-            Expression::MemberAccess { target, choco_type } => todo!(),
+            Expression::MemberCall { target, params, .. } => {
+                for p in params {
+                    self.lower_expr(p)
+                }
+                self.lower_expr(&target.expr);
+                self.push_instr(stack::Instr::ClassMethodCall {offset: target.offset, arity: params.len() });
+            }
+            Expression::MemberAccess { target, .. } => {
+                self.lower_expr(&target.expr);
+                self.push_instr(stack::Instr::ClassMemberLoad(target.offset));
+            }
         }
     }
 
