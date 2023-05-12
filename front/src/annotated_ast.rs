@@ -168,12 +168,14 @@ impl ChocoTyped for Var {
 pub enum Lhs {
     Var(Var),
     Index { list: Box<Expression>, index: Box<Expression>, choco_type: ChocoType },
+    Member { expr: Box<Expression>, offset: usize, choco_type: ChocoType },
 }
 impl ChocoTyped for Lhs {
     fn choco_type(&self) -> ChocoType {
         match self {
             Lhs::Var(v) => v.choco_type(),
             Lhs::Index { choco_type, .. } => choco_type.clone(),
+            Lhs::Member { choco_type, .. } => choco_type.clone(),
         }
     }
 }

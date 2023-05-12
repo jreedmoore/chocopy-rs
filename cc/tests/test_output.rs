@@ -134,7 +134,7 @@ class B(object):
 x: B = None
 x = B()
 print(x.b)
-# x.b = 2
+x.b = 2
 print(x.b)
     "#;
 

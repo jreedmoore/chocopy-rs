@@ -82,7 +82,7 @@ impl<S> VM<S> {
                                 panic!("expected string at heap location {:?}", idx);
                             }
                         }
-                        VMVal::ListRef(idx) => todo!("list print support"),
+                        VMVal::ListRef(_) => todo!("list print support"),
                         VMVal::ObjRef(_) => todo!("obj print support"),
                     };
                     (self.print)(&mut self.s, s)
@@ -204,8 +204,8 @@ impl<S> VM<S> {
                     self.push(VMVal::ObjRef(idx))
                 }
                 stack::Instr::ClassMemberStore(offset) => {
-                    let val = self.pop();
                     let o_ref = self.pop_obj();
+                    let val = self.pop();
                     let o = self.heap_as_obj_mut(o_ref);
                     o.vars[*offset] = val;
                 }
@@ -302,10 +302,9 @@ impl<S> VM<S> {
     }
 
     fn pop_obj(&mut self) -> usize {
-        if let VMVal::ObjRef(idx) = self.pop() {
-            idx
-        } else {
-            panic!("expected obj ref on stack")
+        match self.pop() {
+            VMVal::ObjRef(idx) => idx,
+            x => panic!("expected obj ref on stack, got {:?}", x)
         }
     }
 

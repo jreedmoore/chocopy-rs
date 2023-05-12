@@ -67,8 +67,8 @@ impl Lower {
             self.lowered.start_function(class.name.to_owned() + &"$$new", true);
             self.push_instr(Instr::ClassAlloc(class.vars.len(), BlockLocation::Named(dispatch_name)));
             for (idx, (_, init_val)) in class.vars.iter().enumerate() {
-                self.push_instr(Instr::Duplicate(0));
                 self.lower_literal(init_val);
+                self.push_instr(Instr::Duplicate(1));
                 self.push_instr(Instr::ClassMemberStore(idx))
             }
             self.push_instr(Instr::Jump(BlockLocation::Named(class.name.to_owned() + &"$__init__")))
@@ -105,6 +105,10 @@ impl Lower {
                             self.lower_expr(index);
                             self.lower_expr(list);
                             self.push_instr(Instr::ListAssign)
+                        }
+                        Lhs::Member { expr, offset, .. } => {
+                            self.lower_expr(expr);
+                            self.push_instr(Instr::ClassMemberStore(*offset));
                         }
                     }
                 }

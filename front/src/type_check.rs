@@ -160,12 +160,12 @@ impl Class {
         Ok(&self.vars[binding_info.idx].1)
     }
 
-    fn var_offset(&self, name: &str) -> usize {
-        self.vars_idx.get(name).unwrap().idx
+    fn var_offset(&self, name: &str) -> Result<usize, TypeError> {
+        self.vars_idx.get(name).ok_or_else(|| TypeError::NoSuchMemberVar(format!("var {} on class {}", name, self.name))).map(|info| info.idx)
     }
 
-    fn method_offset(&self, name: &str) -> usize {
-        self.methods_idx.get(name).unwrap().idx
+    fn method_offset(&self, name: &str) -> Result<usize, TypeError> {
+        self.methods_idx.get(name).ok_or_else(|| TypeError::NoSuchMethod(format!("method {} on class {}", name, self.name))).map(|info| info.idx)
     }
 }
 impl From<Class> for annotated_ast::Class {
@@ -448,7 +448,7 @@ impl TypeChecker {
 
                 let v = cls.lookup_var(&m.id.name)?;
                 Ok(annotated_ast::Expression::MemberAccess {
-                    target: annotated_ast::MemberExpression { expr: Box::new(me), offset: cls.var_offset(&m.id.name) },
+                    target: annotated_ast::MemberExpression { expr: Box::new(me), offset: cls.var_offset(&m.id.name)? },
                     choco_type: v.choco_type()
                 })
             }
@@ -481,7 +481,7 @@ impl TypeChecker {
                 }
 
                 Ok(annotated_ast::Expression::MemberCall{
-                    target: annotated_ast::MemberExpression { expr: Box::new(me), offset: cls.method_offset(&m.id.name) }, 
+                    target: annotated_ast::MemberExpression { expr: Box::new(me), offset: cls.method_offset(&m.id.name)? }, 
                     params: es,
                     choco_type: method.return_type.clone(),
                 })
@@ -503,7 +503,14 @@ impl TypeChecker {
     pub fn resolve_target(&self, t: &ast::Target) -> Result<annotated_ast::Lhs, TypeError> {
         match t {
             ast::Target::Id(name) => Ok(annotated_ast::Lhs::Var(self.get_local(&name.name)?.clone())),
-            ast::Target::Member(_) => todo!(),
+            ast::Target::Member(target) => {
+                let te = self.check_expression(&target.expr)?;
+                let cls = self.lookup_class(&te.choco_type())?;
+                let var_type = cls.lookup_var(&target.id.name)?.choco_type();
+                let offset = cls.var_offset(&target.id.name)?;
+
+                Ok(annotated_ast::Lhs::Member { expr: Box::new(te), offset, choco_type: var_type })
+            }
             ast::Target::Index(access) => {
                 let list = self.check_expression(&access.expr)?;
                 let inner_type = list.choco_type().list_inner_type()?;
@@ -848,7 +855,7 @@ impl TypeChecker {
     fn add_class_method(&mut self, name: &str, method: String) -> Result<(), TypeError> {
         let fun = self.get_fun(&(name.to_owned() + &"$" + &method))?.into_owned();
         let cls = self.get_class_mut(name)?;
-        cls.add_method(method, fun);
+        cls.add_method(method, fun)?;
         Ok(())
     }
 
